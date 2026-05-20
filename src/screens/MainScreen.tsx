@@ -17,6 +17,7 @@ import { getNextStores, minutesToStore } from '../utils/convenience';
 import { formatTime, formatMargin, formatPace } from '../utils/pace';
 import type { PaceInfo, CPProjection } from '../utils/pace';
 import { getSettings } from '../utils/storage';
+import { getActionAdvice } from '../utils/actionAdvice';
 import { haversineDistance } from '../utils/gps';
 
 interface ToiletEntry {
@@ -63,7 +64,7 @@ export function MainScreen({
   const [showSOS, setShowSOS] = useState(false);
   const [aiInitialMessage, setAiInitialMessage] = useState<string | undefined>();
   const [showMap, setShowMap] = useState(false);
-  const [showProjection, setShowProjection] = useState(false);
+  const [showProjection, setShowProjection] = useState(true);
   const settings = getSettings();
 
   const bg = nightMode ? 'bg-black' : 'bg-gray-950';
@@ -109,6 +110,17 @@ export function MainScreen({
   // Target margin status flags (vs 26h plan)
   const targetMarginIsNegative = paceInfo.targetMarginMinutes !== null && paceInfo.targetMarginMinutes < 0;
   const targetMarginIsNegativeBig = paceInfo.targetMarginMinutes !== null && paceInfo.targetMarginMinutes < -30;
+
+  // Action advice based on current situation
+  const advice = getActionAdvice({
+    currentKm: gps.currentKm,
+    targetMarginMinutes: paceInfo.targetMarginMinutes,
+    marginMinutes: paceInfo.marginMinutes,
+    currentPaceKmH: paceInfo.currentPaceKmH,
+    predictedPaceKmH: paceInfo.predictedPaceKmH,
+    nightMode,
+    isRaining: weatherCondition?.isRain ?? false,
+  });
 
   const openAIChat = (msg?: string) => {
     setAiInitialMessage(msg);
@@ -240,9 +252,9 @@ export function MainScreen({
                 </div>
               </div>
 
-              {/* Target margin (main KPI: vs 26h plan) */}
+              {/* Pace status + action advice */}
               <div
-                className={`rounded-xl p-3 text-center ${
+                className={`rounded-xl p-3 ${
                   marginIsNegative || targetMarginIsNegativeBig
                     ? 'bg-red-900 animate-pulse'
                     : targetMarginIsNegative
@@ -250,9 +262,20 @@ export function MainScreen({
                     : 'bg-green-900'
                 }`}
               >
-                <p className="text-xs text-gray-300 mb-1">目標余裕</p>
+                {/* Status label */}
+                <p className={`text-sm font-bold text-center mb-1 ${
+                  marginIsNegative || targetMarginIsNegativeBig
+                    ? 'text-red-200'
+                    : targetMarginIsNegative
+                    ? 'text-orange-200'
+                    : 'text-green-200'
+                }`}>
+                  {advice.situation}
+                </p>
+
+                {/* Margin value */}
                 <p
-                  className={`text-3xl font-mono font-bold ${
+                  className={`text-3xl font-mono font-bold text-center ${
                     marginIsNegative || targetMarginIsNegativeBig
                       ? 'text-red-300'
                       : targetMarginIsNegative
@@ -261,21 +284,27 @@ export function MainScreen({
                   }`}
                 >
                   {paceInfo.targetMarginMinutes !== null
-                    ? (paceInfo.targetMarginMinutes >= 0 ? '✅ ' : '') + formatMargin(paceInfo.targetMarginMinutes)
+                    ? formatMargin(paceInfo.targetMarginMinutes)
                     : '--'}
                 </p>
-                {marginIsNegative && (
-                  <p className="text-red-400 text-sm font-bold mt-1">⚠ 関門に間に合いません！</p>
-                )}
-                {!marginIsNegative && targetMarginIsNegative && (
-                  <p className="text-orange-400 text-sm font-bold mt-1">⚠ 目標ペースに遅れています</p>
-                )}
-                {/* Secondary: cutoff margin (safety floor) */}
+                <p className="text-center text-xs text-gray-300 mb-2">（目標まで）</p>
+
+                {/* Secondary: cutoff margin */}
                 {paceInfo.marginMinutes !== null && (
-                  <p className={`text-xs mt-2 ${marginIsNegative ? 'text-red-300' : 'text-gray-400'}`}>
+                  <p className={`text-xs text-center ${marginIsNegative ? 'text-red-300' : 'text-gray-400'}`}>
                     関門余裕: {formatMargin(paceInfo.marginMinutes)}
                   </p>
                 )}
+
+                {/* Action tips */}
+                <div className="mt-2 pt-2 border-t border-white/20">
+                  <p className="text-xs text-gray-300 mb-1">💡 今やること</p>
+                  <ul className="space-y-0.5">
+                    {advice.tips.map((tip, i) => (
+                      <li key={i} className="text-sm text-white">• {tip}</li>
+                    ))}
+                  </ul>
+                </div>
               </div>
 
               {/* Current pace / Required pace */}
@@ -304,6 +333,59 @@ export function MainScreen({
             </div>
           )}
         </div>
+
+        {/* ===== FULL CP PROJECTION TABLE ===== */}
+        {projections.length > 0 && (
+          <div className={`${card} border rounded-2xl p-4`}>
+            <button
+              onClick={() => setShowProjection((v) => !v)}
+              className="w-full flex justify-between items-center"
+            >
+              <h3 className={`font-bold ${accent}`}>各CP到着予測</h3>
+              <span className="text-gray-400 text-sm">{showProjection ? '▲ 閉じる' : '▼ 開く'}</span>
+            </button>
+            {showProjection && (
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-gray-400 border-b border-gray-700">
+                      <th className="text-left pb-1">CP</th>
+                      <th className="text-right pb-1">目標着</th>
+                      <th className="text-right pb-1">予想着</th>
+                      <th className="text-right pb-1">関門</th>
+                      <th className="text-right pb-1">差</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {projections.map((p) => {
+                      const rowColor = p.willMissCutoff
+                        ? 'text-red-400'
+                        : p.willMissTarget
+                        ? 'text-yellow-400'
+                        : 'text-green-400';
+                      const label =
+                        p.cp.km === 100
+                          ? 'ゴール'
+                          : `CP${p.cp.index}`;
+                      const vsMin = Math.round(Math.abs(p.vsTargetMin));
+                      const vsLabel = p.vsTargetMin >= 0 ? `+${vsMin}m` : `-${vsMin}m`;
+                      return (
+                        <tr key={p.cp.km} className={`${rowColor} border-b border-gray-800 last:border-0`}>
+                          <td className="py-1 pr-1 font-bold">{label}</td>
+                          <td className="py-1 text-right font-mono">{formatTime(p.targetArrival)}</td>
+                          <td className="py-1 text-right font-mono font-bold">{formatTime(p.predictedArrival)}</td>
+                          <td className="py-1 text-right font-mono text-gray-400">{formatTime(p.cp.cutoff)}</td>
+                          <td className="py-1 text-right font-mono">{vsLabel}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <p className="text-gray-600 text-xs mt-2">予想着はペース+疲労モデルで自動更新</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ===== CONVENIENCE STORES SECTION ===== */}
         <div className={`${card} border rounded-2xl p-4`}>
@@ -352,59 +434,6 @@ export function MainScreen({
             </div>
           )}
         </div>
-
-        {/* ===== FULL CP PROJECTION TABLE ===== */}
-        {projections.length > 0 && (
-          <div className={`${card} border rounded-2xl p-4`}>
-            <button
-              onClick={() => setShowProjection((v) => !v)}
-              className="w-full flex justify-between items-center"
-            >
-              <h3 className={`font-bold ${accent}`}>全CP見通し</h3>
-              <span className="text-gray-400 text-sm">{showProjection ? '▲ 閉じる' : '▼ 開く'}</span>
-            </button>
-            {showProjection && (
-              <div className="mt-3 overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-gray-400 border-b border-gray-700">
-                      <th className="text-left pb-1">CP</th>
-                      <th className="text-right pb-1">目標</th>
-                      <th className="text-right pb-1">予想</th>
-                      <th className="text-right pb-1">関門</th>
-                      <th className="text-right pb-1">余裕</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {projections.map((p) => {
-                      const rowColor = p.willMissCutoff
-                        ? 'text-red-400'
-                        : p.willMissTarget
-                        ? 'text-yellow-400'
-                        : 'text-green-400';
-                      const label =
-                        p.cp.km === 100
-                          ? 'ゴール'
-                          : `CP${p.cp.index}`;
-                      const vsMin = Math.round(Math.abs(p.vsTargetMin));
-                      const vsLabel = p.vsTargetMin >= 0 ? `+${vsMin}m` : `-${vsMin}m`;
-                      return (
-                        <tr key={p.cp.km} className={`${rowColor} border-b border-gray-800 last:border-0`}>
-                          <td className="py-1 pr-1 font-bold">{label}</td>
-                          <td className="py-1 text-right font-mono">{formatTime(p.targetArrival)}</td>
-                          <td className="py-1 text-right font-mono">{formatTime(p.predictedArrival)}</td>
-                          <td className="py-1 text-right font-mono text-gray-400">{formatTime(p.cp.cutoff)}</td>
-                          <td className="py-1 text-right font-mono font-bold">{vsLabel}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                <p className="text-gray-600 text-xs mt-2">目標列は設定画面の完走目標時間から計算</p>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* ===== ACTION BUTTONS ===== */}
         <div className="space-y-3">
