@@ -37,6 +37,7 @@ interface MainScreenProps {
   toilets: ToiletEntry[];
   nightMode: boolean;
   onRetire: () => void;
+  onSetup: () => void;
 }
 
 type SubScreen = 'main' | 'ai_chat' | 'cp_arrival';
@@ -53,6 +54,7 @@ export function MainScreen({
   toilets,
   nightMode,
   onRetire,
+  onSetup,
 }: MainScreenProps) {
   const [subScreen, setSubScreen] = useState<SubScreen>('main');
   const [showSOS, setShowSOS] = useState(false);
@@ -353,6 +355,16 @@ export function MainScreen({
             className="w-full min-h-[72px] bg-gray-800 text-gray-400 text-lg font-bold rounded-2xl border border-gray-600 active:scale-95 transition-transform"
           >
             リタイアする
+          </button>
+
+          {/* Setup reset */}
+          <button
+            onClick={() => {
+              if (confirm('設定画面に戻りますか？\n（スタート時刻・APIキー等の設定は保持されます）')) onSetup();
+            }}
+            className="w-full min-h-[56px] bg-gray-900 text-gray-600 text-sm font-bold rounded-2xl border border-gray-800 active:scale-95 transition-transform"
+          >
+            ⚙️ 設定に戻る／やり直す
           </button>
         </div>
       </div>

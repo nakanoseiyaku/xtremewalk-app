@@ -105,8 +105,12 @@ export function isDebugMode(): boolean {
   return new URLSearchParams(window.location.search).get('debug') === '1';
 }
 
-// Returns mock km from URL param or localStorage
+// Returns mock km only when debug mode is active — never bleeds into production
 export function getMockKm(): number | null {
+  if (!isDebugMode()) {
+    localStorage.removeItem('mock_km');
+    return null;
+  }
   const urlParam = new URLSearchParams(window.location.search).get('mock_km');
   if (urlParam !== null) return Number(urlParam);
   const stored = localStorage.getItem('mock_km');

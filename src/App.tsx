@@ -230,6 +230,7 @@ export default function App() {
       toilets={toiletsData}
       nightMode={nightMode}
       onRetire={() => transitionTo('retired')}
+      onSetup={() => transitionTo('setup')}
     />
     </>
   );
