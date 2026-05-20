@@ -1,0 +1,20 @@
+{
+  "name": "東京エクストリームウォーク100 ナビ",
+  "short_name": "XWalk100",
+  "description": "東京エクストリームウォーク100 レースナビゲーター",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#FFB347",
+  "background_color": "#000000",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["sports", "navigation"],
+  "lang": "ja"
+}
