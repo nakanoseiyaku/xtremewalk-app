@@ -74,8 +74,17 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
     (pos: GeolocationPosition) => {
       const { latitude, longitude, accuracy } = pos.coords;
 
-      // Filter: skip if accuracy > 50m
-      if (accuracy > 50) return;
+      // Display sanity check only: drop non-finite or absurd fixes (>2km accuracy).
+      // This is NOT the km-tracking gate — degraded indoor fixes still pass through
+      // so the map can always show the user's position.
+      if (
+        !Number.isFinite(latitude) ||
+        !Number.isFinite(longitude) ||
+        !Number.isFinite(accuracy) ||
+        accuracy > 2000
+      ) {
+        return;
+      }
 
       // Compute bearing from consecutive positions (NOT GeolocationCoordinates.heading which fails at walking speed)
       let bearing: number | null = null;
@@ -85,18 +94,17 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
         bearing = computeBearing(prevPositionRef.current, currentPos);
       }
 
-      // Filter: skip if speed < 0.5m/s (nearly stationary noise)
       const nativeSpeed = pos.coords.speed;
-      if (nativeSpeed !== null && nativeSpeed < 0.5) {
-        prevPositionRef.current = currentPos;
-        return;
-      }
 
-      // Only compute km position when the race is active.
-      // Before the race starts the user's home GPS may coincidentally map
-      // to a non-zero km point on the course — this prevents that confusion.
+      // km-tracking gates — these gate the km computation only, NOT the displayed
+      // position. A stationary or low-accuracy reading still updates lat/lng.
+      const isStationary = nativeSpeed !== null && nativeSpeed < 0.5;
+      const kmTrackable = accuracy <= 50 && !isStationary;
+
+      // Only compute km position when the race is active and the reading is
+      // trustworthy for km tracking. Otherwise smoothedKm stays at prevKmRef.
       let smoothedKm = prevKmRef.current;
-      if (isRaceActive) {
+      if (isRaceActive && kmTrackable) {
         const nearest = findNearestKm(currentPos, kmPoints, prevKmIndexRef.current);
 
         // Forward-jump speed limit: the km reading cannot advance more than
@@ -111,29 +119,26 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
             : 0;
         const maxForwardKm = Math.max(2.0, elapsedHours * 10);
 
-        if (nearest.km > prevKmRef.current + maxForwardKm) {
-          prevPositionRef.current = currentPos;
-          return;
+        const forwardJump = nearest.km > prevKmRef.current + maxForwardKm;
+        // km rollback prevention: if new_km < prev_km - 0.5
+        const rollback = nearest.km < prevKmRef.current - 0.5;
+
+        // Forward-jump / rollback: skip the km update only — do NOT drop the
+        // position. smoothedKm remains prevKmRef.current.
+        if (!forwardJump && !rollback) {
+          // Accept this reading
+          lastAcceptedTimeRef.current = nowMs;
+
+          // Smoothing: average of last 3 valid km readings
+          kmWindowRef.current.push(nearest.km);
+          if (kmWindowRef.current.length > 3) kmWindowRef.current.shift();
+          smoothedKm =
+            kmWindowRef.current.reduce((a, b) => a + b, 0) /
+            kmWindowRef.current.length;
+
+          prevKmIndexRef.current = nearest.index;
+          prevKmRef.current = smoothedKm;
         }
-
-        // km rollback prevention: if new_km < prev_km - 0.5, skip
-        if (nearest.km < prevKmRef.current - 0.5) {
-          prevPositionRef.current = currentPos;
-          return;
-        }
-
-        // Accept this reading
-        lastAcceptedTimeRef.current = nowMs;
-
-        // Smoothing: average of last 3 valid km readings
-        kmWindowRef.current.push(nearest.km);
-        if (kmWindowRef.current.length > 3) kmWindowRef.current.shift();
-        smoothedKm =
-          kmWindowRef.current.reduce((a, b) => a + b, 0) /
-          kmWindowRef.current.length;
-
-        prevKmIndexRef.current = nearest.index;
-        prevKmRef.current = smoothedKm;
       }
 
       prevPositionRef.current = currentPos;
@@ -156,6 +161,7 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
         setState((prev) => ({ ...prev, status: 'lost' }));
       }, 5 * 60 * 1000);
 
+      // Always publish the latest fix's display fields.
       setState({
         lat: latitude,
         lng: longitude,
