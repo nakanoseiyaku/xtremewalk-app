@@ -9,6 +9,7 @@ import { useAlerts } from './hooks/useAlerts';
 import { CHECKPOINTS } from './constants/checkpoints';
 import { isNightMode } from './constants/colors';
 import { getAppState, saveAppState } from './utils/storage';
+import { MockPanel, isDebugMode, getMockKm } from './components/MockPanel';
 import { fetchWeather, getCurrentWeather } from './utils/weather';
 import { calcPaceInfo } from './utils/pace';
 import type { PaceInfo } from './utils/pace';
@@ -92,6 +93,8 @@ export default function App() {
 
   const [nightMode, setNightMode] = useState(isNightMode);
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
+  const [debugMode] = useState(isDebugMode);
+  const [mockKm, setMockKm] = useState<number | null>(getMockKm);
   const [paceInfo, setPaceInfo] = useState<PaceInfo>({
     currentPaceKmH: 0,
     predictedPaceKmH: 0,
@@ -105,7 +108,7 @@ export default function App() {
   const gpsLostSinceRef = useRef<Date | null>(null);
 
   // Hooks
-  const gps = useGPS(kmPointsData);
+  const gps = useGPS(kmPointsData, mockKm);
   const wakeLock = useWakeLock();
   const battery = useBattery();
   const deadman = useDeadman(appState === 'active');
@@ -208,6 +211,13 @@ export default function App() {
 
   // Active state
   return (
+    <>
+    {debugMode && (
+      <MockPanel
+        currentKm={gps.currentKm}
+        onMockKmChange={setMockKm}
+      />
+    )}
     <MainScreen
       gps={gps}
       wakeLock={wakeLock}
@@ -221,5 +231,6 @@ export default function App() {
       nightMode={nightMode}
       onRetire={() => transitionTo('retired')}
     />
+    </>
   );
 }

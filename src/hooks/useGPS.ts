@@ -27,19 +27,19 @@ function getMockKm(): number | null {
   return isNaN(n) ? null : n;
 }
 
-// Only enable mock in development
-const mockKm = import.meta.env.DEV ? getMockKm() : null;
+export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null): GPSState {
+  // Mock km: prefer external (from debug panel) → URL param → null
+  const initialMockKm = externalMockKm ?? getMockKm();
 
-export function useGPS(kmPoints: KmPoint[]): GPSState {
   const [state, setState] = useState<GPSState>({
     lat: null,
     lng: null,
     accuracy: null,
-    currentKm: mockKm ?? 0,
+    currentKm: initialMockKm ?? 0,
     speed: null,
     bearing: null,
-    status: mockKm !== null ? 'active' : 'inactive',
-    lastUpdate: mockKm !== null ? new Date() : null,
+    status: initialMockKm !== null ? 'active' : 'inactive',
+    lastUpdate: initialMockKm !== null ? new Date() : null,
     kmIndex: null,
   });
 
@@ -134,9 +134,15 @@ export function useGPS(kmPoints: KmPoint[]): GPSState {
     setState((prev) => ({ ...prev, status: 'degraded' }));
   }, []);
 
+  // When external mock km changes (from debug panel slider), update state directly
+  useEffect(() => {
+    if (externalMockKm == null) return;
+    setState(prev => ({ ...prev, currentKm: externalMockKm, status: 'active', lastUpdate: new Date() }));
+  }, [externalMockKm]);
+
   useEffect(() => {
     // If mock mode, skip real GPS
-    if (mockKm !== null) return;
+    if (initialMockKm !== null) return;
     if (!navigator.geolocation) return;
 
     const watchId = navigator.geolocation.watchPosition(

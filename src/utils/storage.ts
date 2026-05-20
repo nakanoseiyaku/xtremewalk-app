@@ -77,3 +77,32 @@ export function clearAll(): void {
   safeRemove('xtremewalk_state');
   safeRemove('xtremewalk_weather');
 }
+
+// Encode settings to URL hash (hash is NOT sent to server — relatively safe for API key)
+export function encodeSettingsToHash(settings: AppSettings): string {
+  try {
+    const json = JSON.stringify(settings);
+    return '#s=' + btoa(encodeURIComponent(json));
+  } catch {
+    return '';
+  }
+}
+
+// Decode settings from URL hash (returns null if not found or invalid)
+export function decodeSettingsFromHash(): Partial<AppSettings> | null {
+  try {
+    const hash = window.location.hash;
+    if (!hash.startsWith('#s=')) return null;
+    const encoded = hash.slice(3);
+    const parsed = JSON.parse(decodeURIComponent(atob(encoded)));
+    return parsed as Partial<AppSettings>;
+  } catch {
+    return null;
+  }
+}
+
+// Build shareable URL with current settings encoded in hash
+export function buildShareUrl(settings: AppSettings): string {
+  const base = window.location.origin + window.location.pathname;
+  return base + encodeSettingsToHash(settings);
+}
