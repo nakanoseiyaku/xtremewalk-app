@@ -26,6 +26,7 @@ interface AlertFlags {
   gpsLostAlerted: boolean;
   heatAlerted: boolean;
   rainAlerted: boolean;
+  cutoffAlertLast: number;
   etaNegativeLast: number;
   waterLast: number;
   kmMilestones: Set<number>;
@@ -69,6 +70,7 @@ export function useAlerts(input: AlertInput) {
     gpsLostAlerted: false,
     heatAlerted: false,
     rainAlerted: false,
+    cutoffAlertLast: 0,
     etaNegativeLast: 0,
     waterLast: Date.now(),
     kmMilestones: new Set(),
@@ -95,12 +97,14 @@ export function useAlerts(input: AlertInput) {
 
     // ---- LEVEL 1: CRITICAL (red flash + vibrate + TTS) ----
 
-    // Cutoff < 30 min
+    // Cutoff < 30 min — throttled to 5 min to avoid TTS/vibration every 60s for 30+ min
     if (
       input.marginMinutes !== null &&
       input.marginMinutes < 30 &&
-      input.marginMinutes > 0
+      input.marginMinutes > 0 &&
+      now - flags.cutoffAlertLast > 5 * 60 * 1000
     ) {
+      flags.cutoffAlertLast = now;
       flashScreen('#FF0000');
       vibrate([500, 200, 500, 200, 500]);
       speak(

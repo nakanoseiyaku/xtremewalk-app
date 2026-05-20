@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { SetupScreen } from './screens/SetupScreen';
 import { MainScreen } from './screens/MainScreen';
 import { useGPS } from './hooks/useGPS';
@@ -84,12 +84,8 @@ function PreStartScreen({ onStart }: { onStart: () => void }) {
 }
 
 export default function App() {
-  // Compute effective checkpoints from current settings (raceDate + startTime)
-  // Re-computed every render so settings changes (after returning from setup) are picked up immediately
-  const _settings = getSettings();
-  const effectiveCheckpoints = buildCheckpoints(_settings.raceDate, _settings.startTime);
-  const effectiveStartDate = new Date(`${_settings.raceDate}T${_settings.startTime}:00+09:00`);
-
+  // appState drives settings re-read: settings change only when user completes setup,
+  // which transitions appState. GPS updates don't change appState, so no wasted reads.
   const [appState, setAppState] = useState<AppState>(() => {
     const saved = getAppState();
     if (['setup', 'pre_start', 'active', 'goal', 'retired'].includes(saved)) {
@@ -97,6 +93,16 @@ export default function App() {
     }
     return 'setup';
   });
+
+  const effectiveSettings = useMemo(() => getSettings(), [appState]);
+  const effectiveCheckpoints = useMemo(
+    () => buildCheckpoints(effectiveSettings.raceDate, effectiveSettings.startTime),
+    [effectiveSettings]
+  );
+  const effectiveStartDate = useMemo(
+    () => new Date(`${effectiveSettings.raceDate}T${effectiveSettings.startTime}:00+09:00`),
+    [effectiveSettings]
+  );
 
   const [nightMode, setNightMode] = useState(isNightMode);
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
@@ -213,7 +219,8 @@ export default function App() {
     }
   }, [gps.status]);
 
-  const weatherCondition = getCurrentWeather(weatherData);
+  // Memoize: getCurrentWeather only re-runs when weatherData changes (every ~2km), not on every GPS tick
+  const weatherCondition = useMemo(() => getCurrentWeather(weatherData), [weatherData]);
 
   // Alerts
   const { nutritionDue } = useAlerts({

@@ -26,6 +26,7 @@ export function useBattery(): BatteryState {
 
   useEffect(() => {
     let battery: BatteryManager | null = null;
+    let handler: (() => void) | null = null;
 
     const update = (b: BatteryManager) => {
       const level = Math.round(b.level * 100);
@@ -51,7 +52,7 @@ export function useBattery(): BatteryState {
       nav.getBattery().then((b) => {
         battery = b;
         update(b);
-        const handler = () => update(b);
+        handler = () => update(b);
         b.addEventListener('levelchange', handler);
         b.addEventListener('chargingchange', handler);
         b.addEventListener('dischargingtimechange', handler);
@@ -59,8 +60,10 @@ export function useBattery(): BatteryState {
     }
 
     return () => {
-      if (battery) {
-        // cleanup listeners - stored separately so we can remove them
+      if (battery && handler) {
+        battery.removeEventListener('levelchange', handler);
+        battery.removeEventListener('chargingchange', handler);
+        battery.removeEventListener('dischargingtimechange', handler);
       }
     };
   }, []);

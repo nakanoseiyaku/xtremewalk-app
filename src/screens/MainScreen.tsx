@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { TopBar } from '../components/TopBar';
 import { WeatherBar } from '../components/WeatherBar';
 import { MapView } from '../components/MapView';
@@ -67,7 +67,8 @@ export function MainScreen({
   const [aiInitialMessage, setAiInitialMessage] = useState<string | undefined>();
   const [showMap, setShowMap] = useState(false);
   const [showProjection, setShowProjection] = useState(true);
-  const settings = getSettings();
+  // Settings don't change during the race; re-reads only on mount (after returning from setup screen)
+  const settings = useMemo(() => getSettings(), []);
 
   const bg = nightMode ? 'bg-black' : 'bg-gray-950';
   const card = nightMode ? 'bg-gray-900 border-gray-800' : 'bg-gray-800 border-gray-700';
