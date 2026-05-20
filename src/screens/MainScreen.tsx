@@ -3,13 +3,11 @@ import { TopBar } from '../components/TopBar';
 import { WeatherBar } from '../components/WeatherBar';
 import { MapView } from '../components/MapView';
 import { SOSOverlay } from '../components/SOSOverlay';
-import { DeadmanPrompt } from '../components/DeadmanPrompt';
 import { AIChat } from './AIChat';
 import { CPArrivalScreen } from './CPArrivalScreen';
 import type { GPSState } from '../hooks/useGPS';
 import type { WakeLockState } from '../hooks/useWakeLock';
 import type { BatteryState } from '../hooks/useBattery';
-import type { DeadmanStatus } from '../hooks/useDeadman';
 import type { WeatherCondition } from '../utils/weather';
 import type { Checkpoint } from '../constants/checkpoints';
 import type { ConvenienceStore } from '../utils/convenience';
@@ -33,7 +31,6 @@ interface MainScreenProps {
   gps: GPSState;
   wakeLock: WakeLockState;
   battery: BatteryState;
-  deadman: DeadmanStatus;
   paceInfo: PaceInfo;
   weatherCondition: WeatherCondition | null;
   checkpoints: Checkpoint[];
@@ -56,7 +53,6 @@ export function MainScreen({
   gps,
   wakeLock,
   battery,
-  deadman,
   paceInfo,
   weatherCondition,
   checkpoints,
@@ -580,12 +576,6 @@ export function MainScreen({
         </div>
       )}
 
-      {/* Deadman prompt overlay */}
-      <DeadmanPrompt
-        deadman={deadman}
-        nightMode={nightMode}
-        onSOS={() => setShowSOS(true)}
-      />
     </div>
   );
 }

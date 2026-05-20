@@ -4,7 +4,6 @@ import { MainScreen } from './screens/MainScreen';
 import { useGPS } from './hooks/useGPS';
 import { useWakeLock } from './hooks/useWakeLock';
 import { useBattery } from './hooks/useBattery';
-import { useDeadman } from './hooks/useDeadman';
 import { useAlerts } from './hooks/useAlerts';
 import { buildCheckpoints } from './constants/checkpoints';
 import { isNightMode } from './constants/colors';
@@ -135,8 +134,7 @@ export default function App() {
   const gps = useGPS(kmPointsData, mockKm, appState === 'active');
   const wakeLock = useWakeLock();
   const battery = useBattery();
-  const deadman = useDeadman(appState === 'active');
-  const screenSleep = useScreenSleep(battery.charging);
+const screenSleep = useScreenSleep(battery.charging);
   const motion = useMotionSensor();
   const { speak } = useTTS();
 
@@ -320,7 +318,6 @@ export default function App() {
       gps={gps}
       wakeLock={wakeLock}
       battery={battery}
-      deadman={deadman}
       paceInfo={paceInfo}
       weatherCondition={weatherCondition}
       checkpoints={effectiveCheckpoints}
