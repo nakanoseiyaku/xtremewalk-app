@@ -14,6 +14,7 @@ import { fetchWeather, getCurrentWeather } from './utils/weather';
 import { calcPaceInfo } from './utils/pace';
 import type { PaceInfo } from './utils/pace';
 import type { WeatherData } from './utils/weather';
+import { haversineDistance } from './utils/gps';
 
 // Data imports
 import kmPointsData from './data/course_km_points.json';
@@ -106,6 +107,7 @@ export default function App() {
 
   const kmSnapshotsRef = useRef<KmSnapshot[]>([]);
   const gpsLostSinceRef = useRef<Date | null>(null);
+  const lastWeatherPosRef = useRef<{ lat: number; lng: number } | null>(null);
 
   // Hooks
   const gps = useGPS(kmPointsData, mockKm);
@@ -121,41 +123,50 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch weather on mount and every hour
+  // Fetch weather on mount (initial, before GPS is available)
   useEffect(() => {
-    const doFetch = async () => {
-      const data = await fetchWeather();
-      setWeatherData(data);
-    };
-    doFetch();
-    const interval = setInterval(doFetch, 60 * 60 * 1000);
-    return () => clearInterval(interval);
+    fetchWeather().then(setWeatherData);
   }, []);
 
-  // Track km snapshots for pace
+  // GPS-following weather: re-fetch every 2 km of movement
+  useEffect(() => {
+    if (gps.lat === null || gps.lng === null) return;
+    const last = lastWeatherPosRef.current;
+    if (
+      !last ||
+      haversineDistance({ lat: gps.lat, lng: gps.lng }, last) > 2000
+    ) {
+      lastWeatherPosRef.current = { lat: gps.lat, lng: gps.lng };
+      fetchWeather(gps.lat, gps.lng).then(setWeatherData);
+    }
+  }, [gps.lat, gps.lng]);
+
+  // Track km snapshots for pace (30-min moving average window)
   useEffect(() => {
     if (appState !== 'active') return;
     const now = Date.now();
     kmSnapshotsRef.current.push({ km: gps.currentKm, ts: now });
-    // Keep only last 15 minutes
+    // Keep last 35 minutes so we always have a point at ~30 min ago
     kmSnapshotsRef.current = kmSnapshotsRef.current.filter(
-      (s) => now - s.ts < 15 * 60 * 1000
+      (s) => now - s.ts < 35 * 60 * 1000
     );
 
-    // Find km from ~5 min ago
-    const fiveMinAgo = now - 5 * 60 * 1000;
+    // Find the most recent snapshot at or before 30 min ago
+    const thirtyMinAgo = now - 30 * 60 * 1000;
     const old = [...kmSnapshotsRef.current]
-      .filter((s) => s.ts <= fiveMinAgo)
+      .filter((s) => s.ts <= thirtyMinAgo)
       .sort((a, b) => b.ts - a.ts)[0];
 
-    const km5minAgo = old?.km ?? null;
+    const kmNMinAgo = old?.km ?? null;
+    const elapsedMin = old ? (now - old.ts) / 60000 : null;
 
     // Compute pace info
     const nextCp = CHECKPOINTS.find((cp) => cp.km > gps.currentKm) ?? null;
     if (nextCp) {
       const info = calcPaceInfo(
         gps.currentKm,
-        km5minAgo,
+        kmNMinAgo,
+        elapsedMin,
         nextCp.km,
         nextCp.cutoff
       );
@@ -186,6 +197,7 @@ export default function App() {
     weatherCondition,
     paceKmH: paceInfo.currentPaceKmH,
     active: appState === 'active',
+    stores: storesData as import('./utils/convenience').ConvenienceStore[],
   });
 
   const transitionTo = (state: AppState) => {

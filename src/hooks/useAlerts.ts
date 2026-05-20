@@ -1,8 +1,9 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useTTS } from './useTTS';
-import { isNightMode } from '../constants/colors';
 import type { GPSStatus } from './useGPS';
 import type { WeatherCondition } from '../utils/weather';
+import type { ConvenienceStore } from '../utils/convenience';
+import { getNextStores } from '../utils/convenience';
 
 export interface AlertInput {
   currentKm: number;
@@ -13,9 +14,9 @@ export interface AlertInput {
   weatherCondition: WeatherCondition | null;
   paceKmH: number;
   active: boolean;
+  stores: ConvenienceStore[];
 }
 
-// Track which alerts have been fired to avoid repeats
 interface AlertFlags {
   km15Warned: boolean;
   km35Warned: boolean;
@@ -25,11 +26,12 @@ interface AlertFlags {
   gpsLostAlerted: boolean;
   heatAlerted: boolean;
   rainAlerted: boolean;
-  paceReportLast: number; // timestamp
+  etaNegativeLast: number;
   waterLast: number;
-  footCareLast: number;
   kmMilestones: Set<number>;
-  prevKm: number | null; // used to detect km crossing (not initial value)
+  prevKm: number | null;
+  wall45Warned: boolean;
+  wall75Warned: boolean;
 }
 
 function vibrate(pattern: number | number[]) {
@@ -51,6 +53,11 @@ function flashScreen(color: string = '#FF0000') {
 
 export function useAlerts(input: AlertInput) {
   const { speak } = useTTS();
+
+  // inputRef pattern: handleAlerts stays stable, always reads latest values
+  const inputRef = useRef<AlertInput>(input);
+  inputRef.current = input;
+
   const flagsRef = useRef<AlertFlags>({
     km15Warned: false,
     km35Warned: false,
@@ -60,22 +67,27 @@ export function useAlerts(input: AlertInput) {
     gpsLostAlerted: false,
     heatAlerted: false,
     rainAlerted: false,
-    paceReportLast: Date.now(), // don't announce immediately on open
-    waterLast: Date.now(),      // don't announce immediately on open
-    footCareLast: Date.now(),
+    etaNegativeLast: 0,
+    waterLast: Date.now(),
     kmMilestones: new Set(),
-    prevKm: null, // null = first run; set to km on first call to detect crossings only
+    prevKm: null,
+    wall45Warned: false,
+    wall75Warned: false,
   });
 
   const handleAlerts = useCallback(() => {
+    const input = inputRef.current;
     if (!input.active) return;
+    // Skip km-crossing detection while GPS hasn't started tracking yet
+    if (input.gpsStatus === 'inactive') return;
+
     const flags = flagsRef.current;
     const now = Date.now();
     const km = input.currentKm;
 
     // ---- LEVEL 1: CRITICAL (red flash + vibrate + TTS) ----
 
-    // Cutoff < 30min
+    // Cutoff < 30 min
     if (
       input.marginMinutes !== null &&
       input.marginMinutes < 30 &&
@@ -120,14 +132,13 @@ export function useAlerts(input: AlertInput) {
 
     // ---- LEVEL 2: WARNING (vibrate + TTS) ----
 
-    // ETA negative (will not make cutoff)
+    // ETA negative — throttled to every 10 min to avoid repetition
     if (input.marginMinutes !== null && input.marginMinutes < 0) {
       vibrate([200, 100, 200]);
-      // Speak every 10 min
-      if (now - flags.paceReportLast > 10 * 60 * 1000) {
-        flags.paceReportLast = now;
+      if (now - flags.etaNegativeLast > 10 * 60 * 1000) {
+        flags.etaNegativeLast = now;
         speak(
-          `警告！このペースでは次のチェックポイントの制限時間に間に合いません。ペースを上げてください。`
+          '警告！このペースでは次のチェックポイントの制限時間に間に合いません。ペースを上げてください。'
         );
       }
     }
@@ -145,47 +156,40 @@ export function useAlerts(input: AlertInput) {
     if (input.weatherCondition?.isRain && !flags.rainAlerted) {
       flags.rainAlerted = true;
       vibrate([200, 100, 200]);
-      speak('雨の予報があります。レインウェアの準備をしてください。');
+      speak('雨の予報があります。今すぐレインウェアを手元に出してください。');
     }
 
-    // ---- LEVEL 3: INFO (TTS only) ----
+    // ---- LEVEL 3: INFO / ACTION (TTS only) ----
 
-    // 30min pace report
-    if (now - flags.paceReportLast > 30 * 60 * 1000 && input.paceKmH > 0) {
-      flags.paceReportLast = now;
-      const night = isNightMode();
-      if (!night) {
-        speak(
-          `現在のペースは${input.paceKmH.toFixed(1)}キロメートル毎時です。`
-        );
-      }
-    }
-
-    // 60min water reminder
+    // 60 min water reminder — include nearest store distance (action-oriented)
     if (now - flags.waterLast > 60 * 60 * 1000) {
       flags.waterLast = now;
-      speak('水分補給の時間です。コップ一杯の水を飲みましょう。');
+      const nextStores = getNextStores(input.stores, km, 1);
+      const storeDist =
+        nextStores[0] ? (nextStores[0].km_pos - km).toFixed(1) : null;
+      const storeMsg = storeDist ? `次のコンビニまで${storeDist}キロです。` : '';
+      speak(`水分補給の時間です。コップ一杯の水を飲みましょう。${storeMsg}`);
     }
 
     // ---- KM-crossing detection ----
-    // prevKm=null means this is the first call; set it and skip all km alerts
-    // so that opening the app mid-race doesn't replay past announcements.
+    // prevKm=null means first call; record km and skip to avoid replaying past milestones
     const prevKm = flags.prevKm;
     flags.prevKm = km;
-    if (prevKm === null) return; // first call: just record km, no announcements
+    if (prevKm === null) return;
 
-    // Foot care milestones — only when km actually crosses the value
+    // Foot care milestones (20, 40, 60, 80, 90 km)
     const footCareMilestones = [20, 40, 60, 80, 90];
     for (const milestone of footCareMilestones) {
       if (prevKm < milestone && km >= milestone) {
         flags.kmMilestones.add(milestone);
+        vibrate([100, 50, 100]);
         speak(
           `${milestone}キロ通過！足のケアをしてください。靴下のシワを伸ばし、水ぶくれがないか確認しましょう。`
         );
       }
     }
 
-    // km 0-4 start announcement
+    // km 0-4: start announcement
     if (prevKm === 0 && km < 4 && !flags.km0Started) {
       flags.km0Started = true;
       speak(
@@ -193,20 +197,38 @@ export function useAlerts(input: AlertInput) {
       );
     }
 
-    // km 15: no-store zone warning
+    // km 14-18: no-store zone warning (action: resupply now)
     if (prevKm < 14 && km >= 14 && !flags.km15Warned) {
       flags.km15Warned = true;
       speak(
-        '3キロ先から18キロまでコンビニなし区間です。今すぐ補給を行ってください。'
+        '3キロ先から18キロまでコンビニなし区間です。今すぐ水分と食料を補給してください。'
       );
     }
 
-    // km 35: Yuyuji slope warning
+    // km 34: Yuyuji slope warning
     if (prevKm < 34 && km >= 34 && !flags.km35Warned) {
       flags.km35Warned = true;
       vibrate([100, 50, 100]);
       speak(
-        '遊行寺坂まで1キロ。ペースを落として体力を温存してください。急坂が続きます。'
+        '遊行寺坂まで1キロ。ペースを落として体力を温存してください。急坂が続きます。坂の上には下りがあります。膝をかばって歩いてください。'
+      );
+    }
+
+    // km 44: Wall pre-warning (many walkers hit the wall around km45)
+    if (prevKm < 44 && km >= 44 && !flags.wall45Warned) {
+      flags.wall45Warned = true;
+      vibrate([200, 100, 200]);
+      speak(
+        '45キロ手前です。多くの選手がここから急激な疲労を感じます。今すぐペースを5パーセント落として補給してください。焦らず完歩を目指しましょう。'
+      );
+    }
+
+    // km 74: Second wall warning (km75 region)
+    if (prevKm < 74 && km >= 74 && !flags.wall75Warned) {
+      flags.wall75Warned = true;
+      vibrate([200, 100, 200]);
+      speak(
+        '75キロ手前です。残り25キロ。ここから疲労が加速します。ペースを維持するだけで十分です。補給と休憩を忘れずに。'
       );
     }
 
@@ -215,13 +237,12 @@ export function useAlerts(input: AlertInput) {
       flags.km96Warned = true;
       speak('残り4キロ。最後の補給チャンスです。ゴールまでもう少しです！');
     }
-  }, [input, speak]);
+  }, []); // stable — GPS updates do not recreate this callback
 
   // Run alerts check every 60 seconds
   useEffect(() => {
     if (!input.active) return;
     const interval = setInterval(handleAlerts, 60 * 1000);
-    // Also run immediately on active
     handleAlerts();
     return () => clearInterval(interval);
   }, [input.active, handleAlerts]);

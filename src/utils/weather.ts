@@ -1,13 +1,4 @@
-// Weather fetching and caching via Open-Meteo API
-
-import { getWeatherCache, saveWeatherCache } from './storage';
-
-const WEATHER_URL =
-  'https://api.open-meteo.com/v1/forecast?latitude=35.35&longitude=139.49' +
-  '&hourly=temperature_2m,precipitation_probability,windspeed_10m,relativehumidity_2m' +
-  '&timezone=Asia%2FTokyo&start_date=2026-05-23&end_date=2026-05-24';
-
-const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+// Weather fetching via Open-Meteo API (no API key required)
 
 export interface HourlyWeather {
   time: string;
@@ -20,6 +11,8 @@ export interface HourlyWeather {
 export interface WeatherData {
   hourly: HourlyWeather[];
   fetchedAt: number;
+  lat: number;
+  lng: number;
 }
 
 export interface WeatherCondition {
@@ -34,15 +27,27 @@ export interface WeatherCondition {
   icon: string;
 }
 
-export async function fetchWeather(): Promise<WeatherData | null> {
-  // Check cache first
-  const cached = getWeatherCache();
-  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
-    return cached.data as WeatherData;
-  }
+/**
+ * Fetch weather for the given GPS coordinates.
+ * Defaults to Shonan area (race start) if no coordinates provided.
+ * Uses dynamic date range (today + tomorrow) so the app works outside race day.
+ */
+export async function fetchWeather(
+  lat = 35.35,
+  lng = 139.49
+): Promise<WeatherData | null> {
+  const today = new Date();
+  const startDate = today.toISOString().slice(0, 10);
+  const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+  const endDate = tomorrow.toISOString().slice(0, 10);
+
+  const url =
+    `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}` +
+    `&hourly=temperature_2m,precipitation_probability,windspeed_10m,relativehumidity_2m` +
+    `&timezone=Asia%2FTokyo&start_date=${startDate}&end_date=${endDate}`;
 
   try {
-    const resp = await fetch(WEATHER_URL);
+    const resp = await fetch(url);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const json = await resp.json();
 
@@ -60,16 +65,14 @@ export async function fetchWeather(): Promise<WeatherData | null> {
       humidity: humids[i] ?? 0,
     }));
 
-    const data: WeatherData = { hourly, fetchedAt: Date.now() };
-    saveWeatherCache(data);
-    return data;
+    return { hourly, fetchedAt: Date.now(), lat, lng };
   } catch {
     return null;
   }
 }
 
 /**
- * Get weather for the current hour
+ * Get weather condition for the current hour from cached data.
  */
 export function getCurrentWeather(
   data: WeatherData | null,
@@ -77,10 +80,7 @@ export function getCurrentWeather(
 ): WeatherCondition | null {
   if (!data) return null;
 
-  const hourStr = now.toISOString().slice(0, 13); // "2026-05-23T14"
-  // Find matching hour (Open-Meteo uses local time)
   const localHour = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T${String(now.getHours()).padStart(2, '0')}:00`;
-  void hourStr; // not used directly
 
   const entry =
     data.hourly.find((h) => h.time === localHour) ?? data.hourly[0];
