@@ -25,8 +25,8 @@ const CP_DATA = checkpointsData as Array<{ name: string; km: number; lat: number
 // 1530 route points over 100km
 const POINTS_PER_KM = COURSE_ROUTE.length / 100;
 
-// Default center: Fujisawa start area
-const DEFAULT_CENTER: [number, number] = [35.33, 139.45];
+// Default center: Odawara Castle (actual race start)
+const DEFAULT_CENTER: [number, number] = [35.2499, 139.1559];
 
 function getRouteSlice(startKm: number, endKm: number): [number, number][] {
   const si = Math.max(0, Math.floor(startKm * POINTS_PER_KM));

@@ -69,7 +69,7 @@ function PreStartScreen({ onStart }: { onStart: () => void }) {
       <h1 className="text-2xl font-bold text-amber-400 mb-2">スタート待機中</h1>
       <p className="text-gray-400 mb-4">スタート地点に向かってください</p>
       <p className="text-gray-500 text-sm mb-8">
-        スタート: 藤沢市辻堂海浜公園
+        スタート: 小田原城址公園 銅門広場（神奈川県小田原市）
         <br />
         受付: 7:00〜 / スタート: 7:30〜
       </p>
