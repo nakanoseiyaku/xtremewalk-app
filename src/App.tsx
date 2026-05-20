@@ -10,6 +10,7 @@ import { buildCheckpoints } from './constants/checkpoints';
 import { isNightMode } from './constants/colors';
 import { getAppState, saveAppState, getSettings } from './utils/storage';
 import { MockPanel, isDebugMode, getMockKm } from './components/MockPanel';
+import { useScreenSleep } from './hooks/useScreenSleep';
 import { fetchWeather, getCurrentWeather } from './utils/weather';
 import { calcPaceInfo, calcFullProjection } from './utils/pace';
 import type { PaceInfo, CPProjection } from './utils/pace';
@@ -129,6 +130,7 @@ export default function App() {
   const wakeLock = useWakeLock();
   const battery = useBattery();
   const deadman = useDeadman(appState === 'active');
+  const screenSleep = useScreenSleep(battery.charging);
 
   // Update night mode every minute
   useEffect(() => {
@@ -233,6 +235,7 @@ export default function App() {
     paceKmH: paceInfo.currentPaceKmH,
     active: appState === 'active',
     stores: storesData as import('./utils/convenience').ConvenienceStore[],
+    wakeScreen: screenSleep.wakeFor,
   });
 
   const transitionTo = (state: AppState) => {
@@ -280,6 +283,9 @@ export default function App() {
       onSetup={() => transitionTo('setup')}
       projections={projections}
       nutritionDue={nutritionDue}
+      isSleeping={screenSleep.isSleeping}
+      wakeScreen={screenSleep.wakeFor}
+      onSleepNow={screenSleep.sleep}
     />
     </>
   );

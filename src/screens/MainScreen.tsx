@@ -42,6 +42,9 @@ interface MainScreenProps {
   onSetup: () => void;
   projections: CPProjection[];
   nutritionDue?: boolean;
+  isSleeping?: boolean;
+  wakeScreen?: (ms?: number) => void;
+  onSleepNow?: () => void;
 }
 
 type SubScreen = 'main' | 'ai_chat' | 'cp_arrival';
@@ -61,6 +64,9 @@ export function MainScreen({
   onSetup,
   projections,
   nutritionDue = false,
+  isSleeping = false,
+  wakeScreen,
+  onSleepNow,
 }: MainScreenProps) {
   const [subScreen, setSubScreen] = useState<SubScreen>('main');
   const [showSOS, setShowSOS] = useState(false);
@@ -447,6 +453,16 @@ export function MainScreen({
 
         {/* ===== ACTION BUTTONS ===== */}
         <div className="space-y-3">
+          {/* Screen sleep: dims display to near-black to save AMOLED power (GPS stays on) */}
+          {onSleepNow && (
+            <button
+              onClick={onSleepNow}
+              className="w-full min-h-[56px] bg-gray-900 text-gray-400 text-base font-bold rounded-2xl border border-gray-700 active:scale-95 transition-transform"
+            >
+              🌑 画面を暗くする（バッテリー節約・GPS継続）
+            </button>
+          )}
+
           {/* CP arrival */}
           {nextCp && (
             <button
@@ -517,6 +533,29 @@ export function MainScreen({
           </button>
         </div>
       </div>
+
+      {/* ===== SCREEN SLEEP OVERLAY =====
+          Wake Lock stays ON (GPS continues on Android Chrome).
+          This near-black overlay saves AMOLED power without stopping GPS.
+          Shows only km so user can glance without fully waking. */}
+      {isSleeping && (
+        <div
+          className="fixed inset-0 z-[9998] bg-black flex flex-col items-center justify-center select-none"
+          onClick={() => wakeScreen?.(30_000)}
+          onTouchStart={() => wakeScreen?.(30_000)}
+        >
+          <p className="text-amber-400 font-mono font-bold leading-none" style={{ fontSize: '5rem' }}>
+            {gps.currentKm.toFixed(1)}
+          </p>
+          <p className="text-amber-600 text-xl font-mono mt-1">km</p>
+          {nextCp && (
+            <p className="text-gray-700 text-xs mt-6">
+              次のCP {nextCp.km}km（残り{(nextCp.km - gps.currentKm).toFixed(1)}km）
+            </p>
+          )}
+          <p className="text-gray-800 text-xs absolute bottom-10">タップで画面を表示</p>
+        </div>
+      )}
 
       {/* Deadman prompt overlay */}
       <DeadmanPrompt

@@ -15,6 +15,7 @@ export interface AlertInput {
   paceKmH: number;
   active: boolean;
   stores: ConvenienceStore[];
+  wakeScreen?: (ms?: number) => void;
 }
 
 interface AlertFlags {
@@ -95,6 +96,12 @@ export function useAlerts(input: AlertInput) {
     const now = Date.now();
     const km = input.currentKm;
 
+    // Wrapper: wake screen 30s before speaking so user can read the UI after the alert
+    const speakAndWake = (text: string) => {
+      input.wakeScreen?.(30_000);
+      speak(text);
+    };
+
     // ---- LEVEL 1: CRITICAL (red flash + vibrate + TTS) ----
 
     // Cutoff < 30 min — throttled to 5 min to avoid TTS/vibration every 60s for 30+ min
@@ -107,7 +114,7 @@ export function useAlerts(input: AlertInput) {
       flags.cutoffAlertLast = now;
       flashScreen('#FF0000');
       vibrate([500, 200, 500, 200, 500]);
-      speak(
+      speakAndWake(
         `警告！チェックポイントの制限時間まで${Math.round(input.marginMinutes)}分です。ペースを上げてください。`
       );
     }
@@ -121,7 +128,7 @@ export function useAlerts(input: AlertInput) {
       flags.batteryLowAlerted = true;
       flashScreen('#FF0000');
       vibrate([1000, 500, 1000]);
-      speak(
+      speakAndWake(
         `緊急警告！バッテリーが${input.batteryLevel}%です。今すぐモバイルバッテリーで充電してください。`
       );
     }
@@ -135,7 +142,7 @@ export function useAlerts(input: AlertInput) {
       flags.gpsLostAlerted = true;
       flashScreen('#FF8800');
       vibrate([300, 100, 300]);
-      speak(
+      speakAndWake(
         'GPSを10分以上ロストしています。スマートフォンを空に向けて、GPS信号を確認してください。'
       );
     } else if (input.gpsStatus !== 'lost') {
@@ -149,7 +156,7 @@ export function useAlerts(input: AlertInput) {
       vibrate([200, 100, 200]);
       if (now - flags.etaNegativeLast > 10 * 60 * 1000) {
         flags.etaNegativeLast = now;
-        speak(
+        speakAndWake(
           '警告！このペースでは次のチェックポイントの制限時間に間に合いません。ペースを上げてください。'
         );
       }
@@ -159,7 +166,7 @@ export function useAlerts(input: AlertInput) {
     if (input.weatherCondition?.isHeat && !flags.heatAlerted) {
       flags.heatAlerted = true;
       vibrate([200, 100, 200]);
-      speak(
+      speakAndWake(
         '熱中症注意！気温が高く湿度も高い状態です。こまめな水分補給と休憩を心がけてください。'
       );
     }
@@ -168,7 +175,7 @@ export function useAlerts(input: AlertInput) {
     if (input.weatherCondition?.isRain && !flags.rainAlerted) {
       flags.rainAlerted = true;
       vibrate([200, 100, 200]);
-      speak('雨の予報があります。今すぐレインウェアを手元に出してください。');
+      speakAndWake('雨の予報があります。今すぐレインウェアを手元に出してください。');
     }
 
     // ---- LEVEL 3: INFO / ACTION (TTS only) ----
@@ -180,7 +187,7 @@ export function useAlerts(input: AlertInput) {
       const storeDist =
         nextStores[0] ? (nextStores[0].km_pos - km).toFixed(1) : null;
       const storeMsg = storeDist ? `次のコンビニまで${storeDist}キロです。` : '';
-      speak(`水分補給の時間です。コップ一杯の水を飲みましょう。${storeMsg}`);
+      speakAndWake(`水分補給の時間です。コップ一杯の水を飲みましょう。${storeMsg}`);
     }
 
     // 45-min nutrition reminder — bonking prevention (solid food takes 30 min to absorb)
@@ -191,7 +198,7 @@ export function useAlerts(input: AlertInput) {
       const storeText = nextStore
         ? `次のコンビニまで${(nextStore.km_pos - km).toFixed(1)}キロです。`
         : '';
-      speak(
+      speakAndWake(
         `エネルギー補給のタイミングです。おにぎりやパン、羊羹など炭水化物を今すぐ食べてください。` +
         `固形食は食べてから30分後にエネルギーになるので、空腹を感じる前に食べることが重要です。` +
         storeText
@@ -212,7 +219,7 @@ export function useAlerts(input: AlertInput) {
       if (prevKm < milestone && km >= milestone) {
         flags.kmMilestones.add(milestone);
         vibrate([100, 50, 100]);
-        speak(
+        speakAndWake(
           `${milestone}キロ通過！足のケアをしてください。靴下のシワを伸ばし、水ぶくれがないか確認しましょう。`
         );
       }
@@ -221,7 +228,7 @@ export function useAlerts(input: AlertInput) {
     // km 0-4: start announcement
     if (prevKm === 0 && km < 4 && !flags.km0Started) {
       flags.km0Started = true;
-      speak(
+      speakAndWake(
         'スタートおめでとうございます！コンビニで補給を済ませてからスタートしましょう。'
       );
     }
@@ -229,7 +236,7 @@ export function useAlerts(input: AlertInput) {
     // km 14-18: no-store zone warning — specific shopping list to prevent bonking
     if (prevKm < 14 && km >= 14 && !flags.km15Warned) {
       flags.km15Warned = true;
-      speak(
+      speakAndWake(
         'この先10キロ以上コンビニなし区間に入ります。' +
         '今すぐコンビニに立ち寄ってください。' +
         '推奨購入品：おにぎり2個、スポーツドリンク、塩タブレットまたは梅干し。' +
@@ -241,7 +248,7 @@ export function useAlerts(input: AlertInput) {
     if (prevKm < 28 && km >= 28 && !flags.wall28NutritionWarned) {
       flags.wall28NutritionWarned = true;
       vibrate([200, 100, 200, 100, 200]);
-      speak(
+      speakAndWake(
         `30キロ手前です。体内のグリコーゲンが残り少なくなっています。` +
         `今すぐおにぎりか羊羹を食べてください。` +
         `30分後にエネルギーになり、30キロの壁を越える頃に効果が出ます。` +
@@ -253,7 +260,7 @@ export function useAlerts(input: AlertInput) {
     if (prevKm < 34 && km >= 34 && !flags.km35Warned) {
       flags.km35Warned = true;
       vibrate([100, 50, 100]);
-      speak(
+      speakAndWake(
         '遊行寺坂まで1キロ。ペースを落として体力を温存してください。急坂が続きます。坂の上には下りがあります。膝をかばって歩いてください。'
       );
     }
@@ -262,7 +269,7 @@ export function useAlerts(input: AlertInput) {
     if (prevKm < 44 && km >= 44 && !flags.wall45Warned) {
       flags.wall45Warned = true;
       vibrate([200, 100, 200]);
-      speak(
+      speakAndWake(
         '45キロ手前です。多くの選手がここから急激な疲労を感じます。今すぐペースを5パーセント落として補給してください。焦らず完歩を目指しましょう。'
       );
     }
@@ -271,7 +278,7 @@ export function useAlerts(input: AlertInput) {
     if (prevKm < 74 && km >= 74 && !flags.wall75Warned) {
       flags.wall75Warned = true;
       vibrate([200, 100, 200]);
-      speak(
+      speakAndWake(
         '75キロ手前です。残り25キロ。ここから疲労が加速します。ペースを維持するだけで十分です。補給と休憩を忘れずに。'
       );
     }
@@ -279,7 +286,7 @@ export function useAlerts(input: AlertInput) {
     // km 96: final supply chance
     if (prevKm < 96 && km >= 96 && !flags.km96Warned) {
       flags.km96Warned = true;
-      speak('残り4キロ。最後の補給チャンスです。ゴールまでもう少しです！');
+      speakAndWake('残り4キロ。最後の補給チャンスです。ゴールまでもう少しです！');
     }
   }, []); // stable — GPS updates do not recreate this callback
 
