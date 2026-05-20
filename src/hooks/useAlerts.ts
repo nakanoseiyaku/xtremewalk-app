@@ -17,7 +17,16 @@ export interface AlertInput {
   stores: ConvenienceStore[];
   wakeScreen?: (ms?: number) => void;
   isWalking: boolean | null;
+  cadence: number | null;
 }
+
+const CADENCE_WARN = 85; // steps/min below this triggers alert
+const CADENCE_MESSAGES = [
+  'ケイデンスが落ちています。腕を大きく振ってリズムを取り戻してください。ここまで来たんです、まだ行けます！',
+  '歩くリズムが遅くなっています。背筋を伸ばして、テンポよく足を運びましょう。諦めたら終わりです、続けてください！',
+  'ペースが落ちてきました。深呼吸して、前を向いて歩きましょう。一歩一歩がゴールに近づいています！',
+  '少しペースダウンしています。音楽を思い浮かべて、そのリズムに乗って歩きましょう。あなたはもっとできる！',
+];
 
 interface AlertFlags {
   km15Warned: boolean;
@@ -38,6 +47,8 @@ interface AlertFlags {
   wall75Warned: boolean;
   nutritionLast: number;
   nutritionDueTimeout: ReturnType<typeof setTimeout> | null;
+  cadenceLowLast: number;
+  cadenceMsgIndex: number;
   wall28NutritionWarned: boolean;
   stretchLast: number;
   stretchIndex: number;
@@ -172,6 +183,8 @@ export function useAlerts(input: AlertInput) {
     stretchIndex: 0,
     km30KneeWarned: false,
     nutritionDueTimeout: null,
+    cadenceLowLast: 0,
+    cadenceMsgIndex: 0,
   });
 
   const [nutritionDue, setNutritionDue] = useState(false);
@@ -306,6 +319,20 @@ export function useAlerts(input: AlertInput) {
         setNutritionDueRef.current(false);
         flags.nutritionDueTimeout = null;
       }, 5 * 60 * 1000);
+    }
+
+    // Cadence drop alert — fires when cadence < 85 steps/min for sustained period
+    if (
+      input.cadence !== null &&
+      input.cadence < CADENCE_WARN &&
+      input.isWalking === true &&
+      now - flags.cadenceLowLast > 8 * 60 * 1000 // throttle: once per 8 min
+    ) {
+      flags.cadenceLowLast = now;
+      const msg = CADENCE_MESSAGES[flags.cadenceMsgIndex % CADENCE_MESSAGES.length];
+      flags.cadenceMsgIndex += 1;
+      vibrate([200, 100, 200]);
+      speakAndWake(msg);
     }
 
     // Phase-aware, walking-state-aware stretch reminder (sports medicine panel design)

@@ -3,22 +3,41 @@ import { useState, useEffect, useRef } from 'react';
 export interface MotionState {
   isWalking: boolean | null; // null = sensor unavailable or still sampling
   isAvailable: boolean;
+  stepCount: number;
+  cadence: number | null; // steps/min, null = insufficient data
 }
 
 // Acceleration magnitude standard deviation thresholds (m/s²)
-// Walking produces ~1-4 Hz oscillation; standing still is near-zero variance
 const WALK_THRESHOLD = 1.2;
 const STOP_THRESHOLD = 0.4;
-const DEBOUNCE_MS = 15_000; // must hold state for 15s before committing
+const DEBOUNCE_MS = 15_000;
 const SAMPLE_INTERVAL_MS = 5_000;
-const MAX_BUFFER = 300; // ~5 s at 60 Hz
+const MAX_BUFFER = 300; // ~5s at 60Hz
+
+// Step detection
+const STEP_THRESHOLD = 11.8; // m/s² — above this on a rising edge = one step
+const MIN_STEP_INTERVAL_MS = 300; // min 300ms between steps (max ~200 steps/min)
+const CADENCE_WINDOW_MS = 60_000; // rolling 60s window for cadence
 
 export function useMotionSensor(): MotionState {
-  const [state, setState] = useState<MotionState>({ isWalking: null, isAvailable: false });
+  const [state, setState] = useState<MotionState>({
+    isWalking: null,
+    isAvailable: false,
+    stepCount: 0,
+    cadence: null,
+  });
+
   const bufferRef = useRef<number[]>([]);
   const pendingStateRef = useRef<boolean | null>(null);
   const pendingChangedAtRef = useRef<number>(0);
   const committedStateRef = useRef<boolean | null>(null);
+
+  // Step detection state
+  const lastMagRef = useRef<number>(0);
+  const smoothedMagRef = useRef<number>(0);
+  const lastStepTimeRef = useRef<number>(0);
+  const stepTimestampsRef = useRef<number[]>([]);
+  const stepCountRef = useRef<number>(0);
 
   useEffect(() => {
     if (!('DeviceMotionEvent' in window)) return;
@@ -28,7 +47,30 @@ export function useMotionSensor(): MotionState {
     const handleMotion = (e: DeviceMotionEvent) => {
       const a = e.accelerationIncludingGravity;
       if (!a || a.x === null || a.y === null || a.z === null) return;
+
       const mag = Math.sqrt((a.x ?? 0) ** 2 + (a.y ?? 0) ** 2 + (a.z ?? 0) ** 2);
+
+      // Exponential moving average for step detection (α=0.3 → smooth but responsive)
+      smoothedMagRef.current = 0.7 * smoothedMagRef.current + 0.3 * mag;
+
+      // Step detection: rising edge crosses STEP_THRESHOLD
+      const now = Date.now();
+      if (
+        lastMagRef.current < STEP_THRESHOLD &&
+        smoothedMagRef.current >= STEP_THRESHOLD &&
+        now - lastStepTimeRef.current >= MIN_STEP_INTERVAL_MS
+      ) {
+        lastStepTimeRef.current = now;
+        stepCountRef.current += 1;
+        stepTimestampsRef.current.push(now);
+        // Trim to cadence window
+        stepTimestampsRef.current = stepTimestampsRef.current.filter(
+          (t) => now - t <= CADENCE_WINDOW_MS
+        );
+      }
+      lastMagRef.current = smoothedMagRef.current;
+
+      // Buffer for walking/stopped classification
       bufferRef.current.push(mag);
       if (bufferRef.current.length > MAX_BUFFER) {
         bufferRef.current.shift();
@@ -39,27 +81,46 @@ export function useMotionSensor(): MotionState {
 
     const classify = setInterval(() => {
       const buf = bufferRef.current;
-      if (buf.length < 30) return;
-
-      const mean = buf.reduce((s, v) => s + v, 0) / buf.length;
-      const variance = buf.reduce((s, v) => s + (v - mean) ** 2, 0) / buf.length;
-      const stdDev = Math.sqrt(variance);
-
-      let candidate: boolean | null;
-      if (stdDev > WALK_THRESHOLD) candidate = true;
-      else if (stdDev < STOP_THRESHOLD) candidate = false;
-      else candidate = committedStateRef.current; // ambiguous: keep current
-
       const now = Date.now();
-      if (candidate !== pendingStateRef.current) {
-        pendingStateRef.current = candidate;
-        pendingChangedAtRef.current = now;
-      } else if (now - pendingChangedAtRef.current >= DEBOUNCE_MS) {
-        if (candidate !== committedStateRef.current) {
-          committedStateRef.current = candidate;
-          setState((s) => ({ ...s, isWalking: candidate }));
+
+      // Cadence: steps in last 60s / elapsed fraction
+      const recentSteps = stepTimestampsRef.current.filter(
+        (t) => now - t <= CADENCE_WINDOW_MS
+      );
+      const oldestStep = recentSteps[0];
+      const elapsedSec = oldestStep ? (now - oldestStep) / 1000 : null;
+      const cadence =
+        recentSteps.length >= 5 && elapsedSec && elapsedSec >= 10
+          ? Math.round((recentSteps.length / elapsedSec) * 60)
+          : null;
+
+      // Walking / stopped classification (unchanged)
+      if (buf.length >= 30) {
+        const mean = buf.reduce((s, v) => s + v, 0) / buf.length;
+        const variance = buf.reduce((s, v) => s + (v - mean) ** 2, 0) / buf.length;
+        const stdDev = Math.sqrt(variance);
+
+        let candidate: boolean | null;
+        if (stdDev > WALK_THRESHOLD) candidate = true;
+        else if (stdDev < STOP_THRESHOLD) candidate = false;
+        else candidate = committedStateRef.current;
+
+        if (candidate !== pendingStateRef.current) {
+          pendingStateRef.current = candidate;
+          pendingChangedAtRef.current = now;
+        } else if (now - pendingChangedAtRef.current >= DEBOUNCE_MS) {
+          if (candidate !== committedStateRef.current) {
+            committedStateRef.current = candidate;
+          }
         }
       }
+
+      setState({
+        isWalking: committedStateRef.current,
+        isAvailable: true,
+        stepCount: stepCountRef.current,
+        cadence,
+      });
     }, SAMPLE_INTERVAL_MS);
 
     return () => {

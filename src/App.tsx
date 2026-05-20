@@ -263,6 +263,7 @@ const screenSleep = useScreenSleep(battery.charging);
     stores: storesData as import('./utils/convenience').ConvenienceStore[],
     wakeScreen: screenSleep.wakeFor,
     isWalking: motion.isWalking,
+    cadence: motion.cadence,
   });
 
   const transitionTo = (state: AppState) => {
@@ -336,6 +337,8 @@ const screenSleep = useScreenSleep(battery.charging);
       onSetup={() => transitionTo('setup')}
       projections={projections}
       nutritionDue={nutritionDue}
+      stepCount={motion.stepCount}
+      cadence={motion.cadence}
       isSleeping={screenSleep.isSleeping}
       wakeScreen={screenSleep.wakeFor}
       onSleepNow={screenSleep.sleep}
