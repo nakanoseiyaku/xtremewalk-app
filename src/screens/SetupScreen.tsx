@@ -85,6 +85,33 @@ export function SetupScreen({ onComplete }: SetupScreenProps) {
             <p className="text-gray-500 text-xs mt-1">通常 07:30〜07:42</p>
           </div>
 
+          {/* Target finish time */}
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              目標完走時間
+            </label>
+            <div className="flex items-center gap-4">
+              <input
+                type="range"
+                min={24}
+                max={30}
+                step={0.5}
+                value={settings.targetHours}
+                onChange={(e) =>
+                  setSettings((s) => ({ ...s, targetHours: parseFloat(e.target.value) }))
+                }
+                className="flex-1 accent-amber-400"
+              />
+              <span className="text-2xl font-mono font-bold text-amber-400 w-16 text-right">
+                {Math.floor(settings.targetHours)}h
+                {settings.targetHours % 1 !== 0 ? '30m' : ''}
+              </span>
+            </div>
+            <p className="text-gray-500 text-xs mt-1">
+              チャレンジクラス制限: 26時間（デフォルト）
+            </p>
+          </div>
+
           {/* Emergency contact */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">

@@ -18,6 +18,8 @@ interface CPArrivalScreenProps {
   nextStores: ConvenienceStore[];
   nightMode: boolean;
   onDepart: () => void;
+  nextCp: Checkpoint | null;
+  targetArrivalAtNextCp: Date | null;
 }
 
 function CountdownTimer({ targetDate }: { targetDate: Date }) {
@@ -59,6 +61,8 @@ export function CPArrivalScreen({
   nextStores,
   nightMode,
   onDepart,
+  nextCp,
+  targetArrivalAtNextCp,
 }: CPArrivalScreenProps) {
   const bg = nightMode ? 'bg-black' : 'bg-gray-950';
   const card = nightMode ? 'bg-gray-900' : 'bg-gray-800';
@@ -68,17 +72,25 @@ export function CPArrivalScreen({
     (t) => t.km_pos !== undefined && Math.abs(t.km_pos - cp.km) <= 0.5
   );
 
-  // Calculate recommended departure time
-  // travel_time = remaining_km / pace
-  // safe_departure = cutoff - travel_time - 30min buffer
+  // Distance and travel time to next CP (actual distance, not hardcoded 13km)
+  const distToNextCp = nextCp ? nextCp.km - cp.km : 13;
+  const travelTimeHours = paceKmH > 0 ? distToNextCp / paceKmH : distToNextCp / 4;
+  const travelTimeMs = travelTimeHours * 3600 * 1000;
 
-  // For departure time: from current CP to next CP (avg ~13km per segment)
-  const travelTimeHours = paceKmH > 0 ? 13 / paceKmH : 2;
-  const safeDepartureMs =
-    cp.cutoff.getTime() - travelTimeHours * 3600 * 1000 - 30 * 60 * 1000;
-  const safeDeparture = new Date(safeDepartureMs);
-  const maxRestMs = Math.max(0, safeDepartureMs - Date.now());
-  const maxRestMin = Math.floor(maxRestMs / (60 * 1000));
+  // Cutoff-based: must arrive at next CP before its cutoff
+  const cutoffBaseMs = nextCp
+    ? nextCp.cutoff.getTime() - travelTimeMs - 30 * 60 * 1000
+    : cp.cutoff.getTime();
+  const cutoffDeparture = new Date(Math.min(cutoffBaseMs, cp.cutoff.getTime()));
+  const maxRestByCutoffMin = Math.max(0, Math.floor((cutoffDeparture.getTime() - Date.now()) / 60000));
+
+  // Target-based: arrive at next CP by target time
+  const targetDeparture = targetArrivalAtNextCp
+    ? new Date(targetArrivalAtNextCp.getTime() - travelTimeMs)
+    : null;
+  const maxRestByTargetMin = targetDeparture
+    ? Math.max(0, Math.floor((targetDeparture.getTime() - Date.now()) / 60000))
+    : null;
 
   // Next store ahead
   const nextStore = nextStores[0];
@@ -101,19 +113,34 @@ export function CPArrivalScreen({
           </p>
         </div>
 
-        {/* Recommended departure & max rest */}
+        {/* Departure timing */}
         <div className={`${card} rounded-2xl p-4 space-y-3`}>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-400">推奨出発時刻</span>
-            <span className="text-2xl font-mono font-bold text-green-400">
-              {formatTime(safeDeparture)}
-            </span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-400">最大休憩時間</span>
-            <span className={`text-2xl font-mono font-bold ${maxRestMin < 10 ? 'text-red-400' : 'text-amber-400'}`}>
-              {maxRestMin}分
-            </span>
+          {/* Target-based */}
+          {targetDeparture && maxRestByTargetMin !== null && (
+            <div>
+              <p className="text-xs text-gray-400 mb-1">推奨出発（目標ペース）</p>
+              <div className="flex justify-between items-center">
+                <span className="text-xl font-mono font-bold text-green-400">
+                  {formatTime(targetDeparture)}
+                </span>
+                <span className="text-gray-400 text-sm">
+                  最大 {maxRestByTargetMin}分休憩
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Cutoff-based */}
+          <div className={targetDeparture ? 'border-t border-gray-700 pt-3' : ''}>
+            <p className="text-xs text-gray-400 mb-1">最終出発（関門ライン）</p>
+            <div className="flex justify-between items-center">
+              <span className={`text-xl font-mono font-bold ${maxRestByCutoffMin < 10 ? 'text-red-400' : 'text-orange-400'}`}>
+                {formatTime(cutoffDeparture)}
+              </span>
+              <span className="text-gray-400 text-sm">
+                最大 {maxRestByCutoffMin}分休憩
+              </span>
+            </div>
           </div>
         </div>
 
@@ -170,9 +197,11 @@ export function CPArrivalScreen({
           出発する →
         </button>
 
-        <p className="text-center text-gray-500 text-xs">
-          次のCP: {formatMinutes(travelTimeHours * 60)}の道のり（推定）
-        </p>
+        {nextCp && (
+          <p className="text-center text-gray-500 text-xs">
+            次の{nextCp.name.split(' ')[0]}まで{distToNextCp.toFixed(0)}km（推定{formatMinutes(travelTimeHours * 60)}）
+          </p>
+        )}
       </div>
     </div>
   );

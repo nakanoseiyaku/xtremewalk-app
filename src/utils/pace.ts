@@ -1,4 +1,5 @@
 // Pace calculation utilities
+import type { Checkpoint } from '../constants/checkpoints';
 
 export interface PaceInfo {
   currentPaceKmH: number;
@@ -151,4 +152,65 @@ export function formatMinutes(minutes: number): string {
   const m = absM % 60;
   if (h > 0) return `${h}時間${m}分`;
   return `${m}分`;
+}
+
+export interface CPProjection {
+  cp: Checkpoint;
+  targetArrival: Date;
+  predictedArrival: Date;
+  vsTargetMin: number; // positive = ahead of target
+  vsCutoffMin: number; // positive = before cutoff
+  willMissTarget: boolean;
+  willMissCutoff: boolean;
+}
+
+/**
+ * Simulate arrival at all remaining CPs using leg-by-leg fatigue.
+ * Un-fatigues the current pace to get base pace, then re-applies fatigue
+ * at the midpoint of each leg.
+ */
+export function calcFullProjection(
+  currentKm: number,
+  currentPaceKmH: number,
+  checkpoints: Checkpoint[],
+  startDate: Date,
+  targetHours: number,
+  now: Date = new Date()
+): CPProjection[] {
+  if (currentPaceKmH <= 0) return [];
+
+  // Un-fatigue: recover the "fresh" base pace
+  const basePaceKmH = currentPaceKmH * fatigueFactor(currentKm);
+
+  let simKm = currentKm;
+  let simTimeMs = now.getTime();
+
+  return checkpoints
+    .filter((cp) => cp.km > currentKm)
+    .map((cp) => {
+      const midKm = (simKm + cp.km) / 2;
+      const legPaceKmH = basePaceKmH / fatigueFactor(midKm);
+      const legHours = (cp.km - simKm) / legPaceKmH;
+      simTimeMs += legHours * 3600 * 1000;
+      simKm = cp.km;
+
+      const predictedArrival = new Date(simTimeMs);
+      const targetArrival = new Date(
+        startDate.getTime() + (cp.km / 100) * targetHours * 3600 * 1000
+      );
+      const vsTargetMin =
+        (targetArrival.getTime() - predictedArrival.getTime()) / 60000;
+      const vsCutoffMin =
+        (cp.cutoff.getTime() - predictedArrival.getTime()) / 60000;
+
+      return {
+        cp,
+        targetArrival,
+        predictedArrival,
+        vsTargetMin,
+        vsCutoffMin,
+        willMissTarget: vsTargetMin < 0,
+        willMissCutoff: vsCutoffMin < 0,
+      };
+    });
 }

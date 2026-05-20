@@ -15,7 +15,7 @@ import type { Checkpoint } from '../constants/checkpoints';
 import type { ConvenienceStore } from '../utils/convenience';
 import { getNextStores, minutesToStore } from '../utils/convenience';
 import { formatTime, formatMargin, formatPace } from '../utils/pace';
-import type { PaceInfo } from '../utils/pace';
+import type { PaceInfo, CPProjection } from '../utils/pace';
 import { getSettings } from '../utils/storage';
 import { haversineDistance } from '../utils/gps';
 
@@ -39,6 +39,7 @@ interface MainScreenProps {
   nightMode: boolean;
   onRetire: () => void;
   onSetup: () => void;
+  projections: CPProjection[];
 }
 
 type SubScreen = 'main' | 'ai_chat' | 'cp_arrival';
@@ -56,11 +57,13 @@ export function MainScreen({
   nightMode,
   onRetire,
   onSetup,
+  projections,
 }: MainScreenProps) {
   const [subScreen, setSubScreen] = useState<SubScreen>('main');
   const [showSOS, setShowSOS] = useState(false);
   const [aiInitialMessage, setAiInitialMessage] = useState<string | undefined>();
   const [showMap, setShowMap] = useState(false);
+  const [showProjection, setShowProjection] = useState(false);
   const settings = getSettings();
 
   const bg = nightMode ? 'bg-black' : 'bg-gray-950';
@@ -83,6 +86,14 @@ export function MainScreen({
 
   // Near CP sub-screen
   const effectiveCp = nearCp ?? nextCp;
+
+  // Next CP after effectiveCp (for CPArrivalScreen rest time calculation)
+  const nextCpAfterEffective = effectiveCp
+    ? checkpoints.find((cp) => cp.km > effectiveCp.km) ?? null
+    : nextCp;
+  const targetArrivalAtNextCp = nextCpAfterEffective
+    ? projections.find((p) => p.cp.km === nextCpAfterEffective.km)?.targetArrival ?? null
+    : null;
 
   // Next stores
   const nextStores = getNextStores(stores, gps.currentKm, 3);
@@ -141,6 +152,8 @@ export function MainScreen({
         nextStores={nextStores}
         nightMode={nightMode}
         onDepart={() => setSubScreen('main')}
+        nextCp={nextCpAfterEffective}
+        targetArrivalAtNextCp={targetArrivalAtNextCp}
       />
     );
   }
@@ -319,6 +332,59 @@ export function MainScreen({
             </div>
           )}
         </div>
+
+        {/* ===== FULL CP PROJECTION TABLE ===== */}
+        {projections.length > 0 && (
+          <div className={`${card} border rounded-2xl p-4`}>
+            <button
+              onClick={() => setShowProjection((v) => !v)}
+              className="w-full flex justify-between items-center"
+            >
+              <h3 className={`font-bold ${accent}`}>全CP見通し</h3>
+              <span className="text-gray-400 text-sm">{showProjection ? '▲ 閉じる' : '▼ 開く'}</span>
+            </button>
+            {showProjection && (
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-gray-400 border-b border-gray-700">
+                      <th className="text-left pb-1">CP</th>
+                      <th className="text-right pb-1">目標</th>
+                      <th className="text-right pb-1">予想</th>
+                      <th className="text-right pb-1">関門</th>
+                      <th className="text-right pb-1">余裕</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {projections.map((p) => {
+                      const rowColor = p.willMissCutoff
+                        ? 'text-red-400'
+                        : p.willMissTarget
+                        ? 'text-yellow-400'
+                        : 'text-green-400';
+                      const label =
+                        p.cp.km === 100
+                          ? 'ゴール'
+                          : `CP${p.cp.index}`;
+                      const vsMin = Math.round(Math.abs(p.vsTargetMin));
+                      const vsLabel = p.vsTargetMin >= 0 ? `+${vsMin}m` : `-${vsMin}m`;
+                      return (
+                        <tr key={p.cp.km} className={`${rowColor} border-b border-gray-800 last:border-0`}>
+                          <td className="py-1 pr-1 font-bold">{label}</td>
+                          <td className="py-1 text-right font-mono">{formatTime(p.targetArrival)}</td>
+                          <td className="py-1 text-right font-mono">{formatTime(p.predictedArrival)}</td>
+                          <td className="py-1 text-right font-mono text-gray-400">{formatTime(p.cp.cutoff)}</td>
+                          <td className="py-1 text-right font-mono font-bold">{vsLabel}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <p className="text-gray-600 text-xs mt-2">目標列は設定画面の完走目標時間から計算</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ===== ACTION BUTTONS ===== */}
         <div className="space-y-3">

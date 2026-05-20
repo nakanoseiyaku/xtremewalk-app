@@ -8,11 +8,11 @@ import { useDeadman } from './hooks/useDeadman';
 import { useAlerts } from './hooks/useAlerts';
 import { CHECKPOINTS } from './constants/checkpoints';
 import { isNightMode } from './constants/colors';
-import { getAppState, saveAppState } from './utils/storage';
+import { getAppState, saveAppState, getSettings } from './utils/storage';
 import { MockPanel, isDebugMode, getMockKm } from './components/MockPanel';
 import { fetchWeather, getCurrentWeather } from './utils/weather';
-import { calcPaceInfo } from './utils/pace';
-import type { PaceInfo } from './utils/pace';
+import { calcPaceInfo, calcFullProjection } from './utils/pace';
+import type { PaceInfo, CPProjection } from './utils/pace';
 import type { WeatherData } from './utils/weather';
 import { haversineDistance } from './utils/gps';
 
@@ -20,6 +20,7 @@ import { haversineDistance } from './utils/gps';
 import kmPointsData from './data/course_km_points.json';
 import storesData from './data/convenience_stores.json';
 import toiletsData from './data/toilets.json';
+import { RACE_START_DATE } from './constants/checkpoints';
 
 type AppState = 'setup' | 'pre_start' | 'active' | 'goal' | 'retired';
 
@@ -105,6 +106,8 @@ export default function App() {
     maxRestMinutes: null,
   });
 
+  const [projections, setProjections] = useState<CPProjection[]>([]);
+
   const kmSnapshotsRef = useRef<KmSnapshot[]>([]);
   const gpsLostSinceRef = useRef<Date | null>(null);
   const lastWeatherPosRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -173,6 +176,23 @@ export default function App() {
       setPaceInfo(info);
     }
   }, [gps.currentKm, appState]);
+
+  // Compute full CP projections when pace/km changes
+  useEffect(() => {
+    if (paceInfo.currentPaceKmH <= 0 || appState !== 'active') return;
+    const s = getSettings();
+    const [h, m] = s.startTime.split(':').map(Number);
+    const sd = new Date(RACE_START_DATE);
+    sd.setHours(h, m, 0, 0);
+    const p = calcFullProjection(
+      gps.currentKm,
+      paceInfo.currentPaceKmH,
+      CHECKPOINTS,
+      sd,
+      s.targetHours,
+    );
+    setProjections(p);
+  }, [gps.currentKm, paceInfo.currentPaceKmH, appState]);
 
   // Track GPS lost
   useEffect(() => {
@@ -243,6 +263,7 @@ export default function App() {
       nightMode={nightMode}
       onRetire={() => transitionTo('retired')}
       onSetup={() => transitionTo('setup')}
+      projections={projections}
     />
     </>
   );

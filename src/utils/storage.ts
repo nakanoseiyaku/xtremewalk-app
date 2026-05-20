@@ -4,12 +4,14 @@ export interface AppSettings {
   startTime: string; // "HH:MM"
   emergencyPhone: string;
   claudeApiKey: string;
+  targetHours: number; // 目標完走時間（時間）
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
   startTime: '07:30',
   emergencyPhone: '',
   claudeApiKey: '',
+  targetHours: 26,
 };
 
 function safeGet(key: string): string | null {
