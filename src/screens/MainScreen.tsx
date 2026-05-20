@@ -199,6 +199,16 @@ export function MainScreen({
         nightMode={nightMode}
       />
 
+      {/* GPS permission denied banner */}
+      {gps.status === 'permission_denied' && (
+        <div className="mx-3 mt-2 bg-red-900 border border-red-600 text-white p-3 rounded-xl">
+          <p className="font-bold text-sm">📍 GPS が無効です</p>
+          <p className="text-xs text-red-200 mt-1">
+            設定 → Chrome → 位置情報 → 許可 にしてからページを再読み込みしてください。
+          </p>
+        </div>
+      )}
+
       {/* Weather bar */}
       <WeatherBar condition={weatherCondition} nightMode={nightMode} />
 

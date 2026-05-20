@@ -56,6 +56,8 @@ export function useBattery(): BatteryState {
         b.addEventListener('levelchange', handler);
         b.addEventListener('chargingchange', handler);
         b.addEventListener('dischargingtimechange', handler);
+      }).catch(() => {
+        // Battery API unavailable (iOS, permission denied, etc.) — silently degrade
       });
     }
 

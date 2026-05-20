@@ -11,9 +11,28 @@ export function DeadmanPrompt({ deadman, nightMode, onSOS }: DeadmanPromptProps)
   const border = nightMode ? 'border-amber-500' : 'border-yellow-500';
 
   if (deadman.state === 'sos') {
-    // 3 misses → show SOS screen
-    onSOS();
-    return null;
+    return (
+      <div className="fixed inset-0 bg-red-950 z-40 flex flex-col items-center justify-center p-6 text-white">
+        <div className="text-6xl mb-4">🆘</div>
+        <h2 className="text-2xl font-bold text-red-300 mb-2">安否確認できませんでした</h2>
+        <p className="text-gray-300 text-sm mb-8 text-center">
+          応答がなかったためSOSモードになっています。<br />
+          問題がなければ「大丈夫です」を押してください。
+        </p>
+        <button
+          onClick={onSOS}
+          className="w-full min-h-[72px] bg-red-600 text-white text-xl font-bold rounded-2xl mb-4 active:scale-95 transition-transform"
+        >
+          📞 緊急連絡する
+        </button>
+        <button
+          onClick={deadman.resetSOS}
+          className="w-full min-h-[72px] bg-gray-700 text-white text-xl font-bold rounded-2xl active:scale-95 transition-transform"
+        >
+          ✅ 大丈夫です（誤検知）
+        </button>
+      </div>
+    );
   }
 
   if (deadman.state === 'rest') {

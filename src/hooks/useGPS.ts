@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { findNearestKm, computeBearing } from '../utils/gps';
 import type { KmPoint, LatLng } from '../utils/gps';
 
-export type GPSStatus = 'inactive' | 'active' | 'degraded' | 'lost';
+export type GPSStatus = 'inactive' | 'active' | 'degraded' | 'lost' | 'permission_denied';
 
 export interface GPSState {
   lat: number | null;
@@ -171,8 +171,12 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
     [isRaceActive, kmPoints]  // isRaceActive added to fix stale-closure bug
   );
 
-  const handleError = useCallback(() => {
-    setState((prev) => ({ ...prev, status: 'degraded' }));
+  const handleError = useCallback((e: GeolocationPositionError) => {
+    if (e.code === e.PERMISSION_DENIED) {
+      setState((prev) => ({ ...prev, status: 'permission_denied' }));
+    } else {
+      setState((prev) => ({ ...prev, status: 'degraded' }));
+    }
   }, []);
 
   // When external mock km changes (from debug panel slider), update state directly

@@ -80,6 +80,22 @@ export function clearAll(): void {
   safeRemove('xtremewalk_settings');
   safeRemove('xtremewalk_state');
   safeRemove('xtremewalk_weather');
+  safeRemove('xtremewalk_pace_history');
+}
+
+export function savePaceHistory(history: { km: number; paceKmH: number }[]): void {
+  safeSet('xtremewalk_pace_history', JSON.stringify(history));
+}
+
+export function loadPaceHistory(): { km: number; paceKmH: number }[] {
+  const raw = safeGet('xtremewalk_pace_history');
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 // Encode settings to URL hash (hash is NOT sent to server — relatively safe for API key)
