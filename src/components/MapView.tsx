@@ -122,7 +122,28 @@ export function MapView({ gps, stores, nightMode, nextCpKm }: MapViewProps) {
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Update position marker + route slices when GPS changes
+  // Update route lines whenever km or next CP changes (no GPS required)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Walked route: last 2km behind current position
+    if (walkedLineRef.current) {
+      const walkedStart = Math.max(0, gps.currentKm - 2);
+      walkedLineRef.current.setLatLngs(getRouteSlice(walkedStart, gps.currentKm));
+    }
+
+    // Ahead route: current position to next CP (or +12km max)
+    if (routeLineRef.current) {
+      const endKm =
+        nextCpKm !== null
+          ? Math.min(nextCpKm, gps.currentKm + 12)
+          : gps.currentKm + 12;
+      routeLineRef.current.setLatLngs(getRouteSlice(gps.currentKm, endKm));
+    }
+  }, [gps.currentKm, nextCpKm]);
+
+  // Update position marker + accuracy circle + auto-follow when GPS position changes
   useEffect(() => {
     const map = mapRef.current;
     if (!map || gps.lat === null || gps.lng === null) return;
@@ -161,26 +182,11 @@ export function MapView({ gps, stores, nightMode, nextCpKm }: MapViewProps) {
       }
     }
 
-    // Walked route: last 2km behind current position
-    if (walkedLineRef.current) {
-      const walkedStart = Math.max(0, gps.currentKm - 2);
-      walkedLineRef.current.setLatLngs(getRouteSlice(walkedStart, gps.currentKm));
-    }
-
-    // Ahead route: current position to next CP (or +12km max)
-    if (routeLineRef.current) {
-      const endKm =
-        nextCpKm !== null
-          ? Math.min(nextCpKm, gps.currentKm + 12)
-          : gps.currentKm + 12;
-      routeLineRef.current.setLatLngs(getRouteSlice(gps.currentKm, endKm));
-    }
-
     // Auto-follow at current zoom
     if (followRef.current) {
       map.setView(latlng, map.getZoom(), { animate: true, duration: 0.5 });
     }
-  }, [gps.lat, gps.lng, gps.accuracy, gps.currentKm, nextCpKm]);
+  }, [gps.lat, gps.lng, gps.accuracy]);
 
   // Update next CP marker when nextCpKm changes
   useEffect(() => {
