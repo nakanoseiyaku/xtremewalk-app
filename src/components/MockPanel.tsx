@@ -3,10 +3,17 @@ import { useState, useEffect } from 'react';
 interface MockPanelProps {
   currentKm: number;
   onMockKmChange: (km: number) => void;
+  mockNearCpKm: number | null;
+  onMockNearCpChange: (km: number | null) => void;
 }
 
 // PC debug panel — shown when ?debug=1 is in URL
-export function MockPanel({ currentKm, onMockKmChange }: MockPanelProps) {
+export function MockPanel({
+  currentKm,
+  onMockKmChange,
+  mockNearCpKm,
+  onMockNearCpChange,
+}: MockPanelProps) {
   const [km, setKm] = useState(currentKm);
   const [open, setOpen] = useState(true);
 
@@ -91,6 +98,39 @@ export function MockPanel({ currentKm, onMockKmChange }: MockPanelProps) {
           className="flex-1 bg-purple-800 border border-purple-600 rounded-lg px-2 py-1 text-white text-center"
         />
         <span className="text-gray-400 self-center">km</span>
+      </div>
+
+      {/* Simulated nearCp — test the CP arrival flow without real GPS */}
+      <div className="mt-3 border-t border-purple-700 pt-3">
+        <p className="text-purple-300 font-medium mb-1">擬似接近CP（nearCp）</p>
+        <div className="grid grid-cols-3 gap-1">
+          <button
+            onClick={() => onMockNearCpChange(null)}
+            className={`rounded-lg py-1 transition-colors ${
+              mockNearCpKm == null
+                ? 'bg-amber-500 text-black font-bold'
+                : 'bg-purple-800 hover:bg-purple-700'
+            }`}
+          >
+            なし
+          </button>
+          {CHECKPOINTS.slice(1, 6).map((cp) => (
+            <button
+              key={cp.km}
+              onClick={() => onMockNearCpChange(cp.km)}
+              className={`rounded-lg py-1 transition-colors ${
+                mockNearCpKm === cp.km
+                  ? 'bg-amber-500 text-black font-bold'
+                  : 'bg-purple-800 hover:bg-purple-700'
+              }`}
+            >
+              {cp.name}
+            </button>
+          ))}
+        </div>
+        <p className="text-purple-400 mt-1 text-[10px]">
+          選択中は「CP到着」ボタンがそのCPを対象にします（自宅でも到着フロー検証可）。
+        </p>
       </div>
 
       <p className="text-purple-400 text-center mt-3 text-[10px]">

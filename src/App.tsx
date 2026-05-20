@@ -125,6 +125,8 @@ export default function App() {
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [debugMode] = useState(isDebugMode);
   const [mockKm, setMockKm] = useState<number | null>(getMockKm);
+  // Debug-only: simulate being near a checkpoint without real GPS.
+  const [mockNearCpKm, setMockNearCpKm] = useState<number | null>(null);
   const [paceInfo, setPaceInfo] = useState<PaceInfo>({
     currentPaceKmH: 0,
     predictedPaceKmH: 0,
@@ -332,6 +334,8 @@ const screenSleep = useScreenSleep(battery.charging);
       <MockPanel
         currentKm={gps.currentKm}
         onMockKmChange={setMockKm}
+        mockNearCpKm={mockNearCpKm}
+        onMockNearCpChange={setMockNearCpKm}
       />
     )}
     <MainScreen
@@ -342,6 +346,7 @@ const screenSleep = useScreenSleep(battery.charging);
       weatherCondition={weatherCondition}
       checkpoints={effectiveCheckpoints}
       raceStartedAt={raceStartedAt}
+      mockNearCpKm={mockNearCpKm}
       stores={storesData as import('./utils/convenience').ConvenienceStore[]}
       toilets={enrichedToilets}
       nightMode={nightMode}

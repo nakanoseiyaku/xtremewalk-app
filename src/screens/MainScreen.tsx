@@ -44,6 +44,7 @@ interface MainScreenProps {
   paceHistory?: PacePoint[];
   stepCount?: number;
   cadence?: number | null;
+  mockNearCpKm?: number | null;
 }
 
 type SubScreen = 'main' | 'ai_chat' | 'cp_arrival';
@@ -69,6 +70,7 @@ export function MainScreen({
   paceHistory = [],
   stepCount = 0,
   cadence = null,
+  mockNearCpKm = null,
 }: MainScreenProps) {
   const [subScreen, setSubScreen] = useState<SubScreen>('main');
   const [cpVisits, setCpVisits] = useState<CPVisit[]>(() => loadCpVisits());
@@ -89,16 +91,19 @@ export function MainScreen({
   // Find next CP (first CP with km > currentKm)
   const nextCp = checkpoints.find((cp) => cp.km > gps.currentKm) ?? null;
 
-  // Check if near a CP (within 100m)
-  const nearCp = checkpoints.find((cp) => {
-    if (gps.lat === null || gps.lng === null) return false;
-    if (cp.km > gps.currentKm + 0.5) return false;
-    const distM = haversineDistance(
-      { lat: gps.lat, lng: gps.lng },
-      { lat: cp.lat, lng: cp.lng }
-    );
-    return distM <= 100;
-  });
+  // Check if near a CP (within 100m). Debug: mockNearCpKm overrides GPS.
+  const nearCp =
+    mockNearCpKm != null
+      ? checkpoints.find((cp) => cp.km === mockNearCpKm)
+      : checkpoints.find((cp) => {
+          if (gps.lat === null || gps.lng === null) return false;
+          if (cp.km > gps.currentKm + 0.5) return false;
+          const distM = haversineDistance(
+            { lat: gps.lat, lng: gps.lng },
+            { lat: cp.lat, lng: cp.lng }
+          );
+          return distM <= 100;
+        });
 
   // Near CP sub-screen
   const effectiveCp = nearCp ?? nextCp;
