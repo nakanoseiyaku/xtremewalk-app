@@ -100,9 +100,12 @@ export function MainScreen({
 
   const marginIsNegative =
     paceInfo.marginMinutes !== null && paceInfo.marginMinutes < 0;
-  // Target arrival for next CP (from projections computed in App)
-  const nextCpProjection = projections.find((p) => p.cp.km === nextCp?.km) ?? null;
-  const nextCpTargetArrival = nextCpProjection?.targetArrival ?? null;
+  // Target arrival for next CP: computed directly from settings (independent of pace data)
+  // so it shows even when pace=0 (race just started, or GPS lost)
+  const effectiveStartDate = new Date(`${settings.raceDate}T${settings.startTime}:00+09:00`);
+  const nextCpTargetArrival = nextCp
+    ? new Date(effectiveStartDate.getTime() + (nextCp.km / 100) * settings.targetHours * 3_600_000)
+    : null;
   // Target margin status flags (vs 26h plan)
   const targetMarginIsNegative = paceInfo.targetMarginMinutes !== null && paceInfo.targetMarginMinutes < 0;
   const targetMarginIsNegativeBig = paceInfo.targetMarginMinutes !== null && paceInfo.targetMarginMinutes < -30;
