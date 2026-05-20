@@ -10,6 +10,7 @@ export interface DeadmanStatus {
   startRest: () => void;
   endRest: () => void;
   dismiss: () => void;
+  resetSOS: () => void;
 }
 
 const DAY_INTERVAL_MS = 45 * 60 * 1000;
@@ -29,11 +30,11 @@ export function useDeadman(active: boolean): DeadmanStatus {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       if (isRestRef.current) {
-        // In rest mode, just reschedule
         scheduleNext();
         return;
       }
-      setState('prompt');
+      // Do not overwrite SOS state — if user is already in SOS, keep it
+      setState(prev => prev === 'sos' ? 'sos' : 'prompt');
     }, getInterval());
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -81,5 +82,11 @@ export function useDeadman(active: boolean): DeadmanStatus {
     });
   }, [scheduleNext]);
 
-  return { state, missedCount, confirm, startRest, endRest, dismiss };
+  const resetSOS = useCallback(() => {
+    setMissedCount(0);
+    setState('idle');
+    scheduleNext();
+  }, [scheduleNext]);
+
+  return { state, missedCount, confirm, startRest, endRest, dismiss, resetSOS };
 }

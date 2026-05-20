@@ -8,7 +8,8 @@ import { useDeadman } from './hooks/useDeadman';
 import { useAlerts } from './hooks/useAlerts';
 import { buildCheckpoints } from './constants/checkpoints';
 import { isNightMode } from './constants/colors';
-import { getAppState, saveAppState, getSettings } from './utils/storage';
+import { getAppState, saveAppState, getSettings, savePaceHistory, loadPaceHistory } from './utils/storage';
+import { useTTS } from './hooks/useTTS';
 import { MockPanel, isDebugMode, getMockKm } from './components/MockPanel';
 import { useScreenSleep } from './hooks/useScreenSleep';
 import { useMotionSensor } from './hooks/useMotionSensor';
@@ -124,7 +125,9 @@ export default function App() {
   const [projections, setProjections] = useState<CPProjection[]>([]);
 
   const kmSnapshotsRef = useRef<KmSnapshot[]>([]);
-  const paceHistoryRef = useRef<PacePoint[]>([]);
+  const paceHistoryRef = useRef<PacePoint[]>(
+    appState === 'active' ? loadPaceHistory() : []
+  );
   const gpsLostSinceRef = useRef<Date | null>(null);
   const lastWeatherPosRef = useRef<{ lat: number; lng: number } | null>(null);
 
@@ -135,6 +138,7 @@ export default function App() {
   const deadman = useDeadman(appState === 'active');
   const screenSleep = useScreenSleep(battery.charging);
   const motion = useMotionSensor();
+  const { speak } = useTTS();
 
   // Update night mode every minute
   useEffect(() => {
@@ -165,6 +169,7 @@ export default function App() {
   // Track km snapshots for pace (30-min moving average window)
   useEffect(() => {
     if (appState !== 'active') return;
+    if (!gps.currentKm || isNaN(gps.currentKm)) return;
     const now = Date.now();
     kmSnapshotsRef.current.push({ km: gps.currentKm, ts: now });
     // Keep last 35 minutes so we always have a point at ~30 min ago
@@ -198,16 +203,18 @@ export default function App() {
       );
       setPaceInfo(info);
 
-      // Accumulate pace history for graph (1 point per km)
+      // Accumulate pace history for graph (1 point per km) and persist
       if (info.currentPaceKmH > 0) {
         const history = paceHistoryRef.current;
         const last = history[history.length - 1];
         if (!last || gps.currentKm - last.km >= 1) {
-          paceHistoryRef.current = [...history, { km: gps.currentKm, paceKmH: info.currentPaceKmH }];
+          const next = [...history, { km: gps.currentKm, paceKmH: info.currentPaceKmH }];
+          paceHistoryRef.current = next;
+          savePaceHistory(next);
         }
       }
     }
-  }, [gps.currentKm, appState]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gps.currentKm, appState, effectiveCheckpoints, effectiveStartDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Compute full CP projections when pace/km changes
   useEffect(() => {
@@ -221,7 +228,7 @@ export default function App() {
       s.targetHours,
     );
     setProjections(p);
-  }, [gps.currentKm, paceInfo.currentPaceKmH, appState]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gps.currentKm, paceInfo.currentPaceKmH, appState, effectiveCheckpoints, effectiveStartDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Track GPS lost
   useEffect(() => {
@@ -253,9 +260,36 @@ export default function App() {
   });
 
   const transitionTo = (state: AppState) => {
+    if (state === 'active') {
+      paceHistoryRef.current = [];
+      kmSnapshotsRef.current = [];
+      savePaceHistory([]);
+    }
+    if (state === 'setup') {
+      savePaceHistory([]);
+    }
     setAppState(state);
     saveAppState(state);
   };
+
+  // Goal detection: km >= 100 while active
+  useEffect(() => {
+    if (appState === 'active' && gps.currentKm >= 100) {
+      transitionTo('goal');
+    }
+  }, [gps.currentKm, appState]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Background GPS warning: Android Chrome stops GPS when tab is hidden
+  useEffect(() => {
+    if (appState !== 'active') return;
+    const handleVisibility = () => {
+      if (document.hidden) {
+        speak('画面が切り替わりました。GPSが一時停止します。アプリに戻ってください。');
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [appState, speak]);
 
   if (appState === 'setup') {
     return <SetupScreen onComplete={() => transitionTo('pre_start')} />;

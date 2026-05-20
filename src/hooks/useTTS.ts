@@ -57,7 +57,11 @@ export function useTTS() {
         }
       };
 
-      window.speechSynthesis.speak(utterance);
+      try {
+        window.speechSynthesis.speak(utterance);
+      } catch {
+        isSpeakingRef.current = false;
+      }
     }, 100);
   }, []);
 
@@ -68,6 +72,18 @@ export function useTTS() {
       clearInterval(keepAliveRef.current);
       keepAliveRef.current = null;
     }
+  }, []);
+
+  // Android Chrome: resume TTS after screen unlock
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && isSpeakingRef.current) {
+        window.speechSynthesis.pause();
+        window.speechSynthesis.resume();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, []);
 
   // Cleanup on unmount

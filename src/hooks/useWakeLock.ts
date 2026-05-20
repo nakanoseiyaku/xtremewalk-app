@@ -21,6 +21,7 @@ export function useWakeLock(): WakeLockState {
       return;
     }
     try {
+      if (wakeLockRef.current !== null) return; // already held, avoid duplicate listeners
       wakeLockRef.current = await (navigator as Navigator & { wakeLock: { request: (type: string) => Promise<WakeLockSentinel> } }).wakeLock.request('screen');
       setStatus('active');
       wakeLockRef.current.addEventListener('release', () => {
@@ -43,7 +44,7 @@ export function useWakeLock(): WakeLockState {
   // Re-acquire on visibility change (critical for Android)
   useEffect(() => {
     const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && wakeLockRef.current === null && status === 'active') {
+      if (document.visibilityState === 'visible' && wakeLockRef.current === null && status !== 'unsupported') {
         acquire();
       }
     };

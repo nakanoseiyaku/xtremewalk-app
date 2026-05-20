@@ -34,4 +34,4 @@ export function buildSmsUrl(
 }
 
 // Race emergency number (official race hotline)
-export const RACE_EMERGENCY_TEL = '0120-000-000'; // placeholder - update with real number
+export const RACE_EMERGENCY_TEL = '08077006180';

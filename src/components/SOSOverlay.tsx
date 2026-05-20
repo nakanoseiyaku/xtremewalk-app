@@ -54,7 +54,8 @@ export function SOSOverlay({ phone, lat, lng, onCancel }: SOSOverlayProps) {
         </div>
       ) : (
         <div className="text-center mb-6">
-          <p className="text-lg">SMSアプリを開いています...</p>
+          <p className="text-lg mb-2">SMSアプリが開かない場合は</p>
+          <p className="text-sm text-red-300">下の緊急連絡先に直接電話してください</p>
         </div>
       )}
 

@@ -22,6 +22,7 @@ export interface AlertInput {
 interface AlertFlags {
   km15Warned: boolean;
   km35Warned: boolean;
+  km66ToiletWarned: boolean;
   km96Warned: boolean;
   km0Started: boolean;
   batteryLowAlerted: boolean;
@@ -36,6 +37,7 @@ interface AlertFlags {
   wall45Warned: boolean;
   wall75Warned: boolean;
   nutritionLast: number;
+  nutritionDueTimeout: ReturnType<typeof setTimeout> | null;
   wall28NutritionWarned: boolean;
   stretchLast: number;
   stretchIndex: number;
@@ -150,6 +152,7 @@ export function useAlerts(input: AlertInput) {
   const flagsRef = useRef<AlertFlags>({
     km15Warned: false,
     km35Warned: false,
+    km66ToiletWarned: false,
     km96Warned: false,
     km0Started: false,
     batteryLowAlerted: false,
@@ -168,6 +171,7 @@ export function useAlerts(input: AlertInput) {
     stretchLast: Date.now() - 60 * 60 * 1000, // first alert fires at 60 min after start
     stretchIndex: 0,
     km30KneeWarned: false,
+    nutritionDueTimeout: null,
   });
 
   const [nutritionDue, setNutritionDue] = useState(false);
@@ -187,7 +191,7 @@ export function useAlerts(input: AlertInput) {
     // Wrapper: wake screen 30s before speaking so user can read the UI after the alert
     const speakAndWake = (text: string) => {
       input.wakeScreen?.(30_000);
-      speak(text);
+      speak?.(text);
     };
 
     // ---- LEVEL 1: CRITICAL (red flash + vibrate + TTS) ----
@@ -206,6 +210,9 @@ export function useAlerts(input: AlertInput) {
         `警告！チェックポイントの制限時間まで${Math.round(input.marginMinutes)}分です。ペースを上げてください。`
       );
     }
+
+    // Reset battery flag if battery recovered (e.g. plugged in), so future drops re-alert
+    if ((input.batteryLevel ?? 100) >= 15) flags.batteryLowAlerted = false;
 
     // Battery < 10%
     if (
@@ -250,7 +257,8 @@ export function useAlerts(input: AlertInput) {
       }
     }
 
-    // Heat alert
+    // Heat alert — reset when condition clears so re-alert is possible
+    if (!input.weatherCondition?.isHeat) flags.heatAlerted = false;
     if (input.weatherCondition?.isHeat && !flags.heatAlerted) {
       flags.heatAlerted = true;
       vibrate([200, 100, 200]);
@@ -259,7 +267,8 @@ export function useAlerts(input: AlertInput) {
       );
     }
 
-    // Rain alert
+    // Rain alert — reset when condition clears so re-alert is possible
+    if (!input.weatherCondition?.isRain) flags.rainAlerted = false;
     if (input.weatherCondition?.isRain && !flags.rainAlerted) {
       flags.rainAlerted = true;
       vibrate([200, 100, 200]);
@@ -292,7 +301,11 @@ export function useAlerts(input: AlertInput) {
         storeText
       );
       setNutritionDueRef.current(true);
-      setTimeout(() => setNutritionDueRef.current(false), 5 * 60 * 1000);
+      if (flags.nutritionDueTimeout) clearTimeout(flags.nutritionDueTimeout);
+      flags.nutritionDueTimeout = setTimeout(() => {
+        setNutritionDueRef.current(false);
+        flags.nutritionDueTimeout = null;
+      }, 5 * 60 * 1000);
     }
 
     // Phase-aware, walking-state-aware stretch reminder (sports medicine panel design)
@@ -325,8 +338,8 @@ export function useAlerts(input: AlertInput) {
       }
     }
 
-    // km 0-4: start announcement
-    if (prevKm === 0 && km < 4 && !flags.km0Started) {
+    // km 0-4: start announcement (prevKm < 2 to handle GPS first reading of 0.x)
+    if (prevKm < 2 && !flags.km0Started) {
       flags.km0Started = true;
       speakAndWake(
         'スタートおめでとうございます！コンビニで補給を済ませてからスタートしましょう。'
@@ -337,7 +350,7 @@ export function useAlerts(input: AlertInput) {
     if (prevKm < 14 && km >= 14 && !flags.km15Warned) {
       flags.km15Warned = true;
       speakAndWake(
-        'この先10キロ以上コンビニなし区間に入ります。' +
+        'この先11キロ以上コンビニなし区間に入ります。' +
         '今すぐコンビニに立ち寄ってください。' +
         '推奨購入品：おにぎり2個、スポーツドリンク、塩タブレットまたは梅干し。' +
         '次の補給まで2時間以上かかる可能性があります。'
@@ -352,7 +365,7 @@ export function useAlerts(input: AlertInput) {
         `30キロ手前です。体内のグリコーゲンが残り少なくなっています。` +
         `今すぐおにぎりか羊羹を食べてください。` +
         `30分後にエネルギーになり、30キロの壁を越える頃に効果が出ます。` +
-        `今食べないとガス欠、シャリバテになります。`
+        `今食べないとガス欠やシャリバテになります。`
       );
     }
 
@@ -373,7 +386,9 @@ export function useAlerts(input: AlertInput) {
       flags.km35Warned = true;
       vibrate([100, 50, 100]);
       speakAndWake(
-        '遊行寺坂まで1キロ。ペースを落として体力を温存してください。急坂が続きます。坂の上には下りがあります。膝をかばって歩いてください。'
+        'まもなく遊行寺坂です。急な上り坂が始まります。' +
+        'ペースを落として体力を温存してください。' +
+        '頂上を越えると下り坂になります。下りでは歩幅を小さくして、膝をかばいながらゆっくり歩いてください。'
       );
     }
 
@@ -383,6 +398,15 @@ export function useAlerts(input: AlertInput) {
       vibrate([200, 100, 200]);
       speakAndWake(
         '45キロ手前です。多くの選手がここから急激な疲労を感じます。今すぐペースを5パーセント落として補給してください。焦らず完歩を目指しましょう。'
+      );
+    }
+
+    // km 66: toilet desert zone warning (13km gap: km66 → km79)
+    if (prevKm < 66 && km >= 66 && !flags.km66ToiletWarned) {
+      flags.km66ToiletWarned = true;
+      vibrate([100, 50, 100]);
+      speakAndWake(
+        'ここからトイレが13キロありません。次のトイレはkm79です。今のうちに済ませておいてください。'
       );
     }
 
