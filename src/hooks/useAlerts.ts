@@ -16,6 +16,7 @@ export interface AlertInput {
   active: boolean;
   stores: ConvenienceStore[];
   wakeScreen?: (ms?: number) => void;
+  isWalking: boolean | null;
 }
 
 interface AlertFlags {
@@ -38,6 +39,7 @@ interface AlertFlags {
   wall28NutritionWarned: boolean;
   stretchLast: number;
   stretchIndex: number;
+  km30KneeWarned: boolean;
 }
 
 function vibrate(pattern: number | number[]) {
@@ -56,6 +58,87 @@ function flashScreen(color: string = '#FF0000') {
   document.body.appendChild(overlay);
   setTimeout(() => overlay.remove(), 1000);
 }
+
+// ---------- Sports-medicine stretch matrix (phase × walking state) ----------
+// All messages are designed to be understood from audio alone:
+//   - step-by-step sequence  • explicit hold durations  • bilateral cues included
+//   - no visual references   • walking messages: immediate 1-action cue
+const STRETCH_MATRIX = {
+  // Phase 1: km 0-25 — warm-up & Achilles/calf prevention
+  warmup: {
+    walking: [
+      'ストレッチです。歩きながらできます。まず両肩を耳に近づけるようにすくめます。そのままぎゅっと力を入れて、スッと力を抜いて肩を落とします。3回繰り返してください。次に首をゆっくり右に傾けて5秒、左に傾けて5秒。上半身の力みが取れます。',
+      'かかとストレッチです。歩きながらできます。次の10歩だけ、かかとから地面に着いてつま先でしっかり蹴り出すことを意識してください。ふくらはぎと足首が動いて血流が良くなります。終わったら元のペースに戻してください。',
+    ],
+    stopped: [
+      'アキレス腱のストレッチです。少し立ち止まってください。近くの壁や電柱に両手を添えます。右足を後ろに引いて、かかとを地面につけたまま前の膝を曲げます。アキレス腱が伸びているのを感じたら、そのまま20秒キープ。20秒たったら次は反対側。左足を後ろに引いて同じように20秒。足底筋膜炎の予防になります。',
+      'ふくらはぎのストレッチです。少し立ち止まってください。壁に両手をついて右足を後ろに大きく引き、かかとを地面につけたまま膝を伸ばして20秒キープ。それが終わったら右膝を少し曲げてさらに10秒。これでヒラメ筋まで伸ばせます。左足も同じようにやってください。',
+    ],
+  },
+  // Phase 2: km 25-45 — IT band & knee protection [top priority]
+  knee_protect: {
+    walking: [
+      '膝保護のストレッチです。歩きながらできます。次の20歩、一歩踏み出すたびに後ろ足のお尻をぎゅっと絞ってください。お尻の筋肉が使えると膝の外側への横ぶれが半分になります。これが腸脛靭帯を守る一番の方法です。',
+      '膝の外側痛を防ぐ歩き方です。歩きながらできます。次の50歩だけ、つま先を今より少し外側に向けて歩いてみてください。10度から15度外に開くイメージです。股関節が開いて腸脛靭帯への張力が下がります。',
+    ],
+    stopped: [
+      '腸脛靭帯のストレッチです。今すぐ立ち止まってください。これが膝を守る最重要ストレッチです。右足を左足の後ろに交差させて、両足をそろえて立ちます。そのまま上体をゆっくり右側に倒してください。右の腰からお腿の外側にかけて伸びる感覚があれば正しい姿勢です。10秒キープ。戻して、反対側。左足を右足の後ろに交差させて左に倒して10秒。これを3セット繰り返してください。',
+      '太ももの前のストレッチです。少し立ち止まってください。壁や電柱に左手を添えます。右手で右の足首をつかんで、かかとをお尻に近づけます。そのまま膝を後ろに引くようにして20秒キープ。ふらつく場合は壁に近づいてください。終わったら左足も同じように。膝のお皿への負担が減ります。',
+    ],
+  },
+  // Phase 3: km 45-65 — hip flexor & lower back protection
+  hip_lower: {
+    walking: [
+      '腸腰筋を動かすストレッチです。歩きながらできます。歩幅を今より少し広げて、骨盤を前後に揺らすようなイメージで歩いてみてください。前の足に体重を乗せるとき骨盤が前に出る、後ろ足で蹴るとき骨盤が後ろに引く。この動きで腸腰筋が固まりにくくなります。後半の腰痛を防ぎます。',
+      '体幹を使う歩き方です。歩きながらできます。腕を肩甲骨から動かすように意識して大きく前後に振ってください。肘を後ろに引くとき肩甲骨が寄ります。これだけで体幹が連動して腰への集中負荷が分散されます。腕振りを30歩続けてみてください。',
+    ],
+    stopped: [
+      '腸腰筋のストレッチです。少し立ち止まってください。右足を大きく前に踏み出して、右膝を90度に曲げます。左膝をゆっくり地面につけます。そのまま骨盤を前に押し出すように体重を前にかけて、左の股関節前側が伸びるのを感じてください。20秒キープ。戻して、今度は左足を前に出して右膝を地面について20秒。腰痛と膝前の痛みの根本原因を伸ばします。',
+      'お尻の深い筋肉のストレッチです。少し立ち止まってください。右足首を左膝の上に乗せて、ゆっくり腰を後ろに引いて座るように体重を落とします。お尻の奥が伸びる感覚があれば正しいです。20秒キープ。反対側も同じように。坐骨神経痛の予防になります。',
+    ],
+  },
+  // Phase 4: km 65-85 — fatigue management & hamstring
+  fatigue: {
+    walking: [
+      '全身リセットです。歩きながらできます。まず両肩をぐっと上に持ち上げて、スッと一気に落とします。これを3回。次に鼻からゆっくり4秒吸って、口からゆっくり8秒かけて吐きます。これを3回繰り返してください。乳酸が流れて疲労感が少し和らぎます。',
+      '疲れた時の歩き方です。歩きながらできます。今より少し前傾みを意識して、重心を前気味にしてみてください。坂を上るような姿勢です。筋肉が衝撃を吸収して関節への負担が下がります。それから一歩ごとに地面を後ろに蹴り出すことを意識してください。',
+    ],
+    stopped: [
+      'ハムストリングのストレッチです。少し立ち止まってください。右足を前に伸ばして地面に置きます。膝をなるべく伸ばしたまま、上体をゆっくり前に倒します。太ももの裏が伸びる感覚を確認したら20秒キープ。腰が痛い場合は膝を少し曲げても大丈夫です。左足も同じように。ハムストリングが硬いと腰痛が加速します。',
+      '腰のストレッチです。少し立ち止まってください。両手を腰骨に当てます。上体をゆっくり後ろに反らして10秒。戻して今度は前に丸めて10秒。次に右にゆっくりひねって10秒、左にひねって10秒。これを2セット。長時間歩き続けて固まった腰が解放されます。',
+    ],
+  },
+  // Phase 5: km 85+ — survival, gentle only
+  survival: {
+    walking: [
+      '残りわずかです。歩きながら聞いてください。痛みがある部位があれば、一歩ごとに体重のかかり方を少し変えてみてください。内側に痛みがあれば少し外側に、外側なら内側に。使う筋肉を少しずつ変えることで痛みが分散されます。焦らなくて大丈夫です。このペースでゴールできます。',
+      'ゴールまでもう少しです。腕をしっかり振ると脚が楽になります。膝や足首に衝撃を感じたら歩幅を小さくして、足を動かす回数を上げてください。歩幅が小さいほど関節への衝撃が減ります。',
+    ],
+    stopped: [
+      '足の状態を確認します。少し立ち止まってください。靴の外から指で足の甲をそっと触ってみてください。腫れや熱感があるところはないですか。次に足指をひとつずつ動かしてみて、引っかかる感じや痛みがある指はないですか。何か気になる点があれば今のうちにテーピングか靴下の調整をしてください。',
+      '股関節の解放です。少し立ち止まってください。片手を壁か電柱に添えます。右足を地面からゆっくり持ち上げて、前後にゆっくり振り子のように10回振ります。次に左右に10回。左足も同じように。関節液が広がって硬さが取れます。残りは確実に歩けます。',
+    ],
+  },
+} as const;
+
+type StretchPhase = keyof typeof STRETCH_MATRIX;
+
+function selectStretch(km: number, isWalking: boolean | null, index: number): string {
+  const phase: StretchPhase =
+    km < 25 ? 'warmup' :
+    km < 45 ? 'knee_protect' :
+    km < 65 ? 'hip_lower' :
+    km < 85 ? 'fatigue' :
+    'survival';
+
+  const pool = STRETCH_MATRIX[phase];
+  if (isWalking === true)  return pool.walking[index % pool.walking.length];
+  if (isWalking === false) return pool.stopped[index % pool.stopped.length];
+  // sensor unavailable: alternate walking/stopped each call
+  const all = [...pool.walking, ...pool.stopped];
+  return all[index % all.length];
+}
+// ---------------------------------------------------------------------------
 
 export function useAlerts(input: AlertInput) {
   const { speak } = useTTS();
@@ -84,6 +167,7 @@ export function useAlerts(input: AlertInput) {
     wall28NutritionWarned: false,
     stretchLast: Date.now() - 60 * 60 * 1000, // first alert fires at 60 min after start
     stretchIndex: 0,
+    km30KneeWarned: false,
   });
 
   const [nutritionDue, setNutritionDue] = useState(false);
@@ -211,21 +295,16 @@ export function useAlerts(input: AlertInput) {
       setTimeout(() => setNutritionDueRef.current(false), 5 * 60 * 1000);
     }
 
-    // 90-min stretch reminder — rotates through 6 body-area cues
-    const STRETCH_MESSAGES = [
-      'ふくらはぎと足首のストレッチです。かかとを大きく踏み込んで歩きましょう。足首をゆっくり回すと血流が改善します。',
-      '肩と首のストレッチをしましょう。肩を後ろに大きく5回まわしてください。首をゆっくり左右に傾けて筋肉をほぐしましょう。',
-      '股関節と腸腰筋のストレッチです。歩幅を意識的に広げて股関節を大きく使いましょう。腰に手を当てて背中をまっすぐ伸ばしてください。',
-      'ハムストリングと膝のケアです。次のベンチや段差で片足を伸ばして前屈してください。膝の曲げ伸ばしを5回やっておきましょう。',
-      '全身リセットの時間です。立ち止まって両腕を上に伸ばして深呼吸を3回してください。背中を丸めて猫背ストレッチ。上半身の張りが取れます。',
-      '足裏とアキレス腱のケアです。壁や手すりに手をついてアキレス腱を伸ばしてください。足裏を指で押して痛いところがないか確認しましょう。',
-    ];
-    const STRETCH_INTERVAL_MS = 90 * 60 * 1000;
+    // Phase-aware, walking-state-aware stretch reminder (sports medicine panel design)
+    const STRETCH_INTERVAL_MS =
+      input.isWalking === true  ? 45 * 60 * 1000 :
+      input.isWalking === false ? 60 * 60 * 1000 :
+      90 * 60 * 1000; // sensor unavailable fallback
     if (now - flags.stretchLast >= STRETCH_INTERVAL_MS) {
       flags.stretchLast = now;
-      const msg = STRETCH_MESSAGES[flags.stretchIndex % STRETCH_MESSAGES.length];
+      const msg = selectStretch(km, input.isWalking, flags.stretchIndex);
       flags.stretchIndex += 1;
-      speakAndWake(`ストレッチの時間です。${msg}`);
+      speakAndWake(msg);
     }
 
     // ---- KM-crossing detection ----
@@ -274,6 +353,18 @@ export function useAlerts(input: AlertInput) {
         `今すぐおにぎりか羊羹を食べてください。` +
         `30分後にエネルギーになり、30キロの壁を越える頃に効果が出ます。` +
         `今食べないとガス欠、シャリバテになります。`
+      );
+    }
+
+    // km 30: IT band / knee collapse prevention [most critical injury point]
+    if (prevKm < 30 && km >= 30 && !flags.km30KneeWarned) {
+      flags.km30KneeWarned = true;
+      vibrate([200, 100, 200]);
+      speakAndWake(
+        '重要な警告です。これから30キロから45キロが膝の最大の危機です。' +
+        '今すぐ立ち止まって腸脛靭帯をストレッチしてください。' +
+        '右足を左足の後ろに交差させて、上体を右にゆっくり倒して10秒。左右3回。' +
+        '膝の外側に少しでも違和感がある場合は今対処しないと残り70キロを歩けなくなります。'
       );
     }
 

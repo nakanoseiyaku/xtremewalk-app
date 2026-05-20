@@ -11,6 +11,7 @@ import { isNightMode } from './constants/colors';
 import { getAppState, saveAppState, getSettings } from './utils/storage';
 import { MockPanel, isDebugMode, getMockKm } from './components/MockPanel';
 import { useScreenSleep } from './hooks/useScreenSleep';
+import { useMotionSensor } from './hooks/useMotionSensor';
 import { fetchWeather, getCurrentWeather } from './utils/weather';
 import { calcPaceInfo, calcFullProjection } from './utils/pace';
 import type { PaceInfo, CPProjection } from './utils/pace';
@@ -133,6 +134,7 @@ export default function App() {
   const battery = useBattery();
   const deadman = useDeadman(appState === 'active');
   const screenSleep = useScreenSleep(battery.charging);
+  const motion = useMotionSensor();
 
   // Update night mode every minute
   useEffect(() => {
@@ -247,6 +249,7 @@ export default function App() {
     active: appState === 'active',
     stores: storesData as import('./utils/convenience').ConvenienceStore[],
     wakeScreen: screenSleep.wakeFor,
+    isWalking: motion.isWalking,
   });
 
   const transitionTo = (state: AppState) => {
