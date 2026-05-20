@@ -78,10 +78,8 @@ export function calcPaceInfo(
     etaToNextCp = new Date(now.getTime() + hoursToNextCp * 3600 * 1000);
     marginMinutes =
       (nextCpCutoff.getTime() - etaToNextCp.getTime()) / (60 * 1000);
-  } else {
-    // No movement yet: margin from cutoff to now
-    marginMinutes = (nextCpCutoff.getTime() - now.getTime()) / (60 * 1000);
   }
+  // else: no pace data yet → leave marginMinutes null so UI shows '--'
 
   // Required pace corrected for fatigue + circadian: walker needs to go faster
   // now to compensate for the slowdown they'll experience later
