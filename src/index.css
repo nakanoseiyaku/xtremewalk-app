@@ -2,6 +2,38 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Leaflet map label styles */
+.xw-km-label {
+  background: rgba(0,0,0,0.65);
+  color: #FFB347;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 1px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.xw-cp-label {
+  background: #ef4444;
+  color: #fff;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 2px 5px;
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+.xw-store-label {
+  background: rgba(30,30,30,0.85);
+  color: #4ade80;
+  font-size: 10px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;

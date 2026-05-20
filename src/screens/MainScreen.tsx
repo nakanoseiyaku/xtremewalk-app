@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { TopBar } from '../components/TopBar';
 import { WeatherBar } from '../components/WeatherBar';
+import { MapView } from '../components/MapView';
 import { SOSOverlay } from '../components/SOSOverlay';
 import { DeadmanPrompt } from '../components/DeadmanPrompt';
 import { AIChat } from './AIChat';
@@ -59,6 +60,7 @@ export function MainScreen({
   const [subScreen, setSubScreen] = useState<SubScreen>('main');
   const [showSOS, setShowSOS] = useState(false);
   const [aiInitialMessage, setAiInitialMessage] = useState<string | undefined>();
+  const [showMap, setShowMap] = useState(false);
   const settings = getSettings();
 
   const bg = nightMode ? 'bg-black' : 'bg-gray-950';
@@ -156,6 +158,25 @@ export function MainScreen({
 
       {/* Weather bar */}
       <WeatherBar condition={weatherCondition} nightMode={nightMode} />
+
+      {/* Map toggle */}
+      <div className="px-3 pt-2">
+        <button
+          onClick={() => setShowMap((v) => !v)}
+          className={`w-full min-h-[48px] rounded-2xl text-sm font-bold border transition-colors active:scale-95 ${
+            showMap
+              ? 'bg-amber-500 text-black border-amber-400'
+              : 'bg-gray-800 text-gray-300 border-gray-700'
+          }`}
+        >
+          {showMap ? '🗺️ 地図を閉じる' : '🗺️ 地図を開く'}
+        </button>
+        {showMap && (
+          <div className="mt-2">
+            <MapView gps={gps} stores={stores} nightMode={nightMode} />
+          </div>
+        )}
+      </div>
 
       {/* Main content */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3 pb-4">
