@@ -29,6 +29,7 @@ interface AlertFlags {
   waterLast: number;
   footCareLast: number;
   kmMilestones: Set<number>;
+  prevKm: number | null; // used to detect km crossing (not initial value)
 }
 
 function vibrate(pattern: number | number[]) {
@@ -59,10 +60,11 @@ export function useAlerts(input: AlertInput) {
     gpsLostAlerted: false,
     heatAlerted: false,
     rainAlerted: false,
-    paceReportLast: 0,
-    waterLast: 0,
-    footCareLast: 0,
+    paceReportLast: Date.now(), // don't announce immediately on open
+    waterLast: Date.now(),      // don't announce immediately on open
+    footCareLast: Date.now(),
     kmMilestones: new Set(),
+    prevKm: null, // null = first run; set to km on first call to detect crossings only
   });
 
   const handleAlerts = useCallback(() => {
@@ -165,10 +167,17 @@ export function useAlerts(input: AlertInput) {
       speak('水分補給の時間です。コップ一杯の水を飲みましょう。');
     }
 
-    // Foot care milestones
+    // ---- KM-crossing detection ----
+    // prevKm=null means this is the first call; set it and skip all km alerts
+    // so that opening the app mid-race doesn't replay past announcements.
+    const prevKm = flags.prevKm;
+    flags.prevKm = km;
+    if (prevKm === null) return; // first call: just record km, no announcements
+
+    // Foot care milestones — only when km actually crosses the value
     const footCareMilestones = [20, 40, 60, 80, 90];
     for (const milestone of footCareMilestones) {
-      if (km >= milestone && !flags.kmMilestones.has(milestone)) {
+      if (prevKm < milestone && km >= milestone) {
         flags.kmMilestones.add(milestone);
         speak(
           `${milestone}キロ通過！足のケアをしてください。靴下のシワを伸ばし、水ぶくれがないか確認しましょう。`
@@ -177,7 +186,7 @@ export function useAlerts(input: AlertInput) {
     }
 
     // km 0-4 start announcement
-    if (km < 4 && !flags.km0Started) {
+    if (prevKm === 0 && km < 4 && !flags.km0Started) {
       flags.km0Started = true;
       speak(
         'スタートおめでとうございます！コンビニで補給を済ませてからスタートしましょう。'
@@ -185,7 +194,7 @@ export function useAlerts(input: AlertInput) {
     }
 
     // km 15: no-store zone warning
-    if (km >= 14 && km < 15 && !flags.km15Warned) {
+    if (prevKm < 14 && km >= 14 && !flags.km15Warned) {
       flags.km15Warned = true;
       speak(
         '3キロ先から18キロまでコンビニなし区間です。今すぐ補給を行ってください。'
@@ -193,7 +202,7 @@ export function useAlerts(input: AlertInput) {
     }
 
     // km 35: Yuyuji slope warning
-    if (km >= 34 && km < 35 && !flags.km35Warned) {
+    if (prevKm < 34 && km >= 34 && !flags.km35Warned) {
       flags.km35Warned = true;
       vibrate([100, 50, 100]);
       speak(
@@ -202,7 +211,7 @@ export function useAlerts(input: AlertInput) {
     }
 
     // km 96: final supply chance
-    if (km >= 96 && !flags.km96Warned) {
+    if (prevKm < 96 && km >= 96 && !flags.km96Warned) {
       flags.km96Warned = true;
       speak('残り4キロ。最後の補給チャンスです。ゴールまでもう少しです！');
     }
