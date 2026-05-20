@@ -81,6 +81,7 @@ export function clearAll(): void {
   safeRemove('xtremewalk_state');
   safeRemove('xtremewalk_weather');
   safeRemove('xtremewalk_pace_history');
+  safeRemove('xtremewalk_cp_visits');
 }
 
 export function savePaceHistory(history: { km: number; paceKmH: number }[]): void {
@@ -89,6 +90,29 @@ export function savePaceHistory(history: { km: number; paceKmH: number }[]): voi
 
 export function loadPaceHistory(): { km: number; paceKmH: number }[] {
   const raw = safeGet('xtremewalk_pace_history');
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export interface CPVisit {
+  km: number;
+  index: number;
+  name: string;
+  arrivedAt: number; // epoch ms
+  departedAt: number | null;
+}
+
+export function saveCpVisits(v: CPVisit[]): void {
+  safeSet('xtremewalk_cp_visits', JSON.stringify(v));
+}
+
+export function loadCpVisits(): CPVisit[] {
+  const raw = safeGet('xtremewalk_cp_visits');
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);

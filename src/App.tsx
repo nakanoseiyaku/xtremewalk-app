@@ -7,7 +7,7 @@ import { useBattery } from './hooks/useBattery';
 import { useAlerts } from './hooks/useAlerts';
 import { buildCheckpoints } from './constants/checkpoints';
 import { isNightMode } from './constants/colors';
-import { getAppState, saveAppState, getSettings, savePaceHistory, loadPaceHistory } from './utils/storage';
+import { getAppState, saveAppState, getSettings, savePaceHistory, loadPaceHistory, saveCpVisits } from './utils/storage';
 import { useTTS } from './hooks/useTTS';
 import { MockPanel, isDebugMode, getMockKm } from './components/MockPanel';
 import { useScreenSleep } from './hooks/useScreenSleep';
@@ -271,9 +271,11 @@ const screenSleep = useScreenSleep(battery.charging);
       paceHistoryRef.current = [];
       kmSnapshotsRef.current = [];
       savePaceHistory([]);
+      saveCpVisits([]);
     }
     if (state === 'setup') {
       savePaceHistory([]);
+      saveCpVisits([]);
     }
     setAppState(state);
     saveAppState(state);

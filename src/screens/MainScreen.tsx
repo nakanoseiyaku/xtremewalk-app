@@ -14,9 +14,10 @@ import type { ConvenienceStore } from '../utils/convenience';
 import { getNextStores, minutesToStore } from '../utils/convenience';
 import { getNextToilets } from '../utils/toilet';
 import type { ToiletEntry } from '../utils/toilet';
-import { formatTime, formatMargin, formatPace } from '../utils/pace';
+import { formatTime, formatMargin, formatPace, formatMinutes } from '../utils/pace';
 import type { PaceInfo, CPProjection } from '../utils/pace';
-import { getSettings } from '../utils/storage';
+import { getSettings, loadCpVisits, saveCpVisits } from '../utils/storage';
+import type { CPVisit } from '../utils/storage';
 import { getActionAdvice } from '../utils/actionAdvice';
 import { PaceGraph } from '../components/PaceGraph';
 import type { PacePoint } from '../components/PaceGraph';
@@ -68,6 +69,7 @@ export function MainScreen({
   cadence = null,
 }: MainScreenProps) {
   const [subScreen, setSubScreen] = useState<SubScreen>('main');
+  const [cpVisits, setCpVisits] = useState<CPVisit[]>(() => loadCpVisits());
   const [showSOS, setShowSOS] = useState(false);
   const [aiInitialMessage, setAiInitialMessage] = useState<string | undefined>();
   const [showMap, setShowMap] = useState(false);
@@ -95,6 +97,11 @@ export function MainScreen({
 
   // Near CP sub-screen
   const effectiveCp = nearCp ?? nextCp;
+
+  // Visit record for the CP currently shown on the arrival screen
+  const effectiveCpVisit = effectiveCp
+    ? cpVisits.find((v) => v.km === effectiveCp.km) ?? null
+    : null;
 
   // Next CP after effectiveCp (for CPArrivalScreen rest time calculation)
   const nextCpAfterEffective = effectiveCp
@@ -136,12 +143,48 @@ export function MainScreen({
     setSubScreen('ai_chat');
   };
 
-  // Show CP arrival automatically when near
-  useEffect(() => {
-    if (nearCp && subScreen === 'main') {
-      setSubScreen('cp_arrival');
+  const handleDepart = () => {
+    if (effectiveCp) {
+      const km = effectiveCp.km;
+      setCpVisits((prev) =>
+        prev.map((v) =>
+          v.km === km && v.departedAt === null
+            ? { ...v, departedAt: Date.now() }
+            : v
+        )
+      );
     }
-  }, [nearCp, subScreen]);
+    setSubScreen('main');
+  };
+
+  // Persist visit records
+  useEffect(() => {
+    saveCpVisits(cpVisits);
+  }, [cpVisits]);
+
+  // Show CP arrival automatically when near (but not for already-departed CPs)
+  useEffect(() => {
+    if (!nearCp || subScreen !== 'main') return;
+    const existing = cpVisits.find((v) => v.km === nearCp.km);
+    if (existing && existing.departedAt !== null) return; // already departed — don't reopen
+    if (!existing) {
+      setCpVisits((prev) =>
+        prev.some((v) => v.km === nearCp.km)
+          ? prev
+          : [
+              ...prev,
+              {
+                km: nearCp.km,
+                index: nearCp.index,
+                name: nearCp.name,
+                arrivedAt: Date.now(),
+                departedAt: null,
+              },
+            ]
+      );
+    }
+    setSubScreen('cp_arrival');
+  }, [nearCp, subScreen, cpVisits]);
 
   if (showSOS) {
     return (
@@ -177,7 +220,8 @@ export function MainScreen({
         toilets={toilets}
         nextStores={nextStores}
         nightMode={nightMode}
-        onDepart={() => setSubScreen('main')}
+        onDepart={handleDepart}
+        visit={effectiveCpVisit}
         nextCp={nextCpAfterEffective}
         targetArrivalAtNextCp={targetArrivalAtNextCp}
       />
@@ -442,6 +486,42 @@ export function MainScreen({
                 <p className="text-gray-600 text-xs mt-2">予想着はペース+疲労モデルで自動更新</p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ===== CP VISIT HISTORY ===== */}
+        {cpVisits.some((v) => v.departedAt !== null) && (
+          <div className={`${card} border rounded-2xl p-4`}>
+            <h3 className={`font-bold ${accent} mb-3`}>通過記録</h3>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-gray-400 border-b border-gray-700">
+                  <th className="text-left pb-1">CP</th>
+                  <th className="text-right pb-1">到着</th>
+                  <th className="text-right pb-1">出発</th>
+                  <th className="text-right pb-1">休憩</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cpVisits
+                  .filter((v) => v.departedAt !== null)
+                  .slice()
+                  .sort((a, b) => a.km - b.km)
+                  .map((v) => {
+                    const departedAt = v.departedAt as number;
+                    const restMin = Math.round((departedAt - v.arrivedAt) / 60000);
+                    const label = v.km === 100 ? 'ゴール' : `CP${v.index}`;
+                    return (
+                      <tr key={v.km} className="text-gray-300 border-b border-gray-800 last:border-0">
+                        <td className="py-1 pr-1 font-bold">{label}</td>
+                        <td className="py-1 text-right font-mono">{formatTime(new Date(v.arrivedAt))}</td>
+                        <td className="py-1 text-right font-mono">{formatTime(new Date(departedAt))}</td>
+                        <td className="py-1 text-right font-mono">{formatMinutes(restMin)}</td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
           </div>
         )}
 

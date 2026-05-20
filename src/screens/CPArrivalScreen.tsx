@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { Checkpoint } from '../constants/checkpoints';
 import type { ConvenienceStore } from '../utils/convenience';
 import { formatTime, formatMinutes } from '../utils/pace';
+import type { CPVisit } from '../utils/storage';
 
 interface ToiletEntry {
   name: string;
@@ -18,6 +19,7 @@ interface CPArrivalScreenProps {
   nextStores: ConvenienceStore[];
   nightMode: boolean;
   onDepart: () => void;
+  visit: CPVisit | null;
   nextCp: Checkpoint | null;
   targetArrivalAtNextCp: Date | null;
 }
@@ -53,6 +55,29 @@ function CountdownTimer({ targetDate }: { targetDate: Date }) {
   );
 }
 
+function RestElapsed({ arrivedAt }: { arrivedAt: number }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const update = () => setElapsed(Date.now() - arrivedAt);
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [arrivedAt]);
+
+  const totalSec = Math.floor(elapsed / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+
+  return (
+    <span className="font-mono">
+      {h > 0 ? `${h}:` : ''}
+      {String(m).padStart(2, '0')}:{String(s).padStart(2, '0')}
+    </span>
+  );
+}
+
 export function CPArrivalScreen({
   cp,
   currentKm,
@@ -61,6 +86,7 @@ export function CPArrivalScreen({
   nextStores,
   nightMode,
   onDepart,
+  visit,
   nextCp,
   targetArrivalAtNextCp,
 }: CPArrivalScreenProps) {
@@ -103,6 +129,16 @@ export function CPArrivalScreen({
           <div className="text-4xl mb-2">🏁</div>
           <h1 className="text-xl font-bold text-amber-400">{cp.name}</h1>
           <p className="text-gray-400 text-sm">チェックポイント到着！</p>
+          {visit && (
+            <p className="text-gray-400 text-sm mt-1">
+              到着 {formatTime(new Date(visit.arrivedAt))}
+              {visit.departedAt === null && (
+                <span className="ml-2">
+                  休憩 <RestElapsed arrivedAt={visit.arrivedAt} />
+                </span>
+              )}
+            </p>
+          )}
         </div>
 
         {/* Countdown to cutoff */}
