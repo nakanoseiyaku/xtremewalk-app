@@ -18,7 +18,7 @@ const H = 110;
 const PAD = { top: 8, right: 10, bottom: 22, left: 26 };
 const PLOT_W = W - PAD.left - PAD.right;
 const PLOT_H = H - PAD.top - PAD.bottom;
-const Y_MIN = 2;
+const Y_MIN = 0;
 const Y_MAX = 8;
 
 function toX(km: number) {
@@ -69,7 +69,7 @@ export function PaceGraph({ history, currentKm, requiredPaceKmH, predictedPaceKm
             style={{ height: H }}
           >
             {/* グリッド横線 + Y軸ラベル */}
-            {([3, 4, 5, 6] as const).map((y) => (
+            {([2, 4, 6] as const).map((y) => (
               <g key={y}>
                 <line
                   x1={PAD.left} y1={toY(y)}
