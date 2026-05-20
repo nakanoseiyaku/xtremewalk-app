@@ -59,6 +59,7 @@ export function MapView({ gps, stores, nightMode, nextCpKm }: MapViewProps) {
   const posMarkerRef = useRef<L.CircleMarker | null>(null);
   const accuracyCircleRef = useRef<L.Circle | null>(null);
   const storeLayerRef = useRef<L.LayerGroup | null>(null);
+  const fullCourseLineRef = useRef<L.Polyline | null>(null);
   const routeLineRef = useRef<L.Polyline | null>(null);
   const walkedLineRef = useRef<L.Polyline | null>(null);
   const nextCpMarkerRef = useRef<L.Marker | null>(null);
@@ -84,15 +85,23 @@ export function MapView({ gps, stores, nightMode, nextCpKm }: MapViewProps) {
       attribution: '© OpenStreetMap',
     }).addTo(map);
 
-    // Walked route (behind, dim white)
-    walkedLineRef.current = L.polyline([], {
-      color: '#ffffff',
-      weight: 2,
-      opacity: 0.35,
+    // Full course background line (entire 100km, always visible)
+    fullCourseLineRef.current = L.polyline(COURSE_ROUTE, {
+      color: '#6B7280',
+      weight: 3,
+      opacity: 0.45,
       interactive: false,
     }).addTo(map);
 
-    // Ahead route (amber, prominent)
+    // Walked route (behind, dim white) — overlaid on course line
+    walkedLineRef.current = L.polyline([], {
+      color: '#ffffff',
+      weight: 2,
+      opacity: 0.5,
+      interactive: false,
+    }).addTo(map);
+
+    // Ahead route (amber, prominent) — overlaid on course line
     routeLineRef.current = L.polyline([], {
       color: '#FFB347',
       weight: 5,
@@ -116,6 +125,7 @@ export function MapView({ gps, stores, nightMode, nextCpKm }: MapViewProps) {
       posMarkerRef.current = null;
       accuracyCircleRef.current = null;
       storeLayerRef.current = null;
+      fullCourseLineRef.current = null;
       routeLineRef.current = null;
       walkedLineRef.current = null;
       nextCpMarkerRef.current = null;
