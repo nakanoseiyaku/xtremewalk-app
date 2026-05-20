@@ -93,7 +93,7 @@ export function SetupScreen({ onComplete }: SetupScreenProps) {
             <div className="flex items-center gap-4">
               <input
                 type="range"
-                min={24}
+                min={20}
                 max={30}
                 step={0.5}
                 value={settings.targetHours}
@@ -108,7 +108,7 @@ export function SetupScreen({ onComplete }: SetupScreenProps) {
               </span>
             </div>
             <p className="text-gray-500 text-xs mt-1">
-              チャレンジクラス制限: 26時間（デフォルト）
+              チャレンジ制限: 26h / エキスパート制限: 24h
             </p>
           </div>
 
