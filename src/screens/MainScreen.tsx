@@ -195,30 +195,6 @@ export function MainScreen({
     saveCpVisits(cpVisits);
   }, [cpVisits]);
 
-  // Show CP arrival automatically when near (but not for already-departed CPs)
-  useEffect(() => {
-    if (!nearCp || subScreen !== 'main') return;
-    const existing = cpVisits.find((v) => v.km === nearCp.km);
-    if (existing && existing.departedAt !== null) return; // already departed — don't reopen
-    if (!existing) {
-      setCpVisits((prev) =>
-        prev.some((v) => v.km === nearCp.km)
-          ? prev
-          : [
-              ...prev,
-              {
-                km: nearCp.km,
-                index: nearCp.index,
-                name: nearCp.name,
-                arrivedAt: Date.now(),
-                departedAt: null,
-              },
-            ]
-      );
-    }
-    setSubScreen('cp_arrival');
-  }, [nearCp, subScreen, cpVisits]);
-
   if (showSOS) {
     return (
       <SOSOverlay
