@@ -5,7 +5,7 @@ export function useTTS() {
   const keepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isSpeakingRef = useRef(false);
 
-  const speak = useCallback((text: string) => {
+  const speak = useCallback((text: string, onEnd?: () => void) => {
     if (!('speechSynthesis' in window)) return;
 
     const night = isNightMode();
@@ -47,6 +47,7 @@ export function useTTS() {
           clearInterval(keepAliveRef.current);
           keepAliveRef.current = null;
         }
+        onEnd?.();
       };
 
       utterance.onerror = () => {
