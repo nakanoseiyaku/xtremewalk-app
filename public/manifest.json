@@ -2,14 +2,15 @@
   "name": "東京エクストリームウォーク100 ナビ",
   "short_name": "XWalk100",
   "description": "東京エクストリームウォーク100 レースナビゲーター",
-  "start_url": "/",
+  "start_url": "/xtremewalk-app/",
+  "scope": "/xtremewalk-app/",
   "display": "standalone",
   "orientation": "portrait",
   "theme_color": "#FFB347",
   "background_color": "#000000",
   "icons": [
     {
-      "src": "/favicon.svg",
+      "src": "/xtremewalk-app/favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
