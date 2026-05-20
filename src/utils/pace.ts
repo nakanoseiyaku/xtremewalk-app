@@ -154,6 +154,27 @@ export function formatTime(date: Date): string {
 }
 
 /**
+ * Format Date as HH:MM with a next-day prefix relative to the race start's
+ * calendar day. "翌" = +1 calendar day, "翌々" = +2 days.
+ * Uses local midnight boundaries, not raw 24h elapsed.
+ */
+export function formatDayTime(date: Date, raceStart: Date): string {
+  const sm = new Date(
+    raceStart.getFullYear(),
+    raceStart.getMonth(),
+    raceStart.getDate()
+  ).getTime();
+  const dm = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate()
+  ).getTime();
+  const dayDiff = Math.round((dm - sm) / 86_400_000);
+  const prefix = dayDiff <= 0 ? '' : dayDiff === 1 ? '翌' : '翌々';
+  return `${prefix}${formatTime(date)}`;
+}
+
+/**
  * Format minutes as "Xh Ym" or "Ym"
  */
 export function formatMinutes(minutes: number): string {
@@ -168,16 +189,118 @@ export interface CPProjection {
   cp: Checkpoint;
   targetArrival: Date;
   predictedArrival: Date;
+  scheduledArrival: Date; // predictedArrival + cumulative rest of preceding CPs
+  restMinutes: number;    // recommended rest at this CP (sports-medicine model); 0 for goal
   vsTargetMin: number; // positive = ahead of target
   vsCutoffMin: number; // positive = before cutoff
   willMissTarget: boolean;
   willMissCutoff: boolean;
 }
 
+// Per-CP rest tuning, keyed by checkpoint index (1-5). Sports-medicine model.
+interface RestParam {
+  weight: number;
+  min: number;
+  max: number;
+}
+const REST_PARAMS: Record<number, RestParam> = {
+  1: { weight: 0.1, min: 0, max: 15 },
+  2: { weight: 0.25, min: 5, max: 25 },
+  3: { weight: 0.3, min: 8, max: 40 },
+  4: { weight: 0.2, min: 5, max: 30 },
+  5: { weight: 0.15, min: 3, max: 35 },
+};
+// Surplus-redistribution priority when a CP hits its max (CP3 first).
+const REDISTRIBUTE_ORDER = [3, 2, 4, 5, 1];
+
+/**
+ * Allocate a total rest budget T (= goal slack vs 26h target) across the
+ * remaining non-goal CPs using a sports-medicine-informed weighting.
+ * Mutates restMinutes in place.
+ */
+function allocateRest(projections: CPProjection[]): void {
+  for (const p of projections) p.restMinutes = 0;
+
+  const goal = projections.find((p) => p.cp.km === 100);
+  const remaining = projections.filter(
+    (p) => p.cp.km !== 100 && REST_PARAMS[p.cp.index] !== undefined
+  );
+
+  const T = goal ? Math.max(0, goal.vsTargetMin) : 0;
+  if (T <= 0 || remaining.length === 0) return;
+
+  // Stamina bias on base weights, using T as the walker's standing proxy.
+  const biased = new Map<number, number>();
+  for (const p of remaining) {
+    const idx = p.cp.index;
+    let w = REST_PARAMS[idx].weight;
+    if (T < 30) {
+      if (idx === 3 || idx === 4 || idx === 5) w *= 1.2;
+      if (idx === 1) w *= 0.7;
+    } else if (T > 110) {
+      if (idx === 1 || idx === 2) w *= 1.1;
+      if (idx === 4 || idx === 5) w *= 0.85;
+    }
+    biased.set(idx, w);
+  }
+  const biasedSum = [...biased.values()].reduce((a, b) => a + b, 0);
+  const weight = new Map<number, number>();
+  for (const [idx, w] of biased) weight.set(idx, w / biasedSum);
+
+  const floor = remaining.reduce((s, p) => s + REST_PARAMS[p.cp.index].min, 0);
+  const alloc = new Map<number, number>();
+
+  if (T < floor) {
+    // Below safe-care minimums: scale every min proportionally.
+    const scale = T / floor;
+    for (const p of remaining) {
+      alloc.set(p.cp.index, REST_PARAMS[p.cp.index].min * scale);
+    }
+  } else {
+    // Give each its min, then distribute surplus by renormalized weight.
+    for (const p of remaining) {
+      alloc.set(p.cp.index, REST_PARAMS[p.cp.index].min);
+    }
+    let surplus = T - floor;
+    for (let pass = 0; pass < 6 && surplus > 0.01; pass++) {
+      const open = remaining.filter(
+        (p) => (alloc.get(p.cp.index) ?? 0) < REST_PARAMS[p.cp.index].max - 0.01
+      );
+      if (open.length === 0) break;
+      const openWeightSum = open.reduce(
+        (s, p) => s + (weight.get(p.cp.index) ?? 0),
+        0
+      );
+      if (openWeightSum <= 0) break;
+      const ordered = [...open].sort(
+        (a, b) =>
+          REDISTRIBUTE_ORDER.indexOf(a.cp.index) -
+          REDISTRIBUTE_ORDER.indexOf(b.cp.index)
+      );
+      let consumed = 0;
+      for (const p of ordered) {
+        const idx = p.cp.index;
+        const want = surplus * ((weight.get(idx) ?? 0) / openWeightSum);
+        const room = REST_PARAMS[idx].max - (alloc.get(idx) ?? 0);
+        const give = Math.min(want, room);
+        alloc.set(idx, (alloc.get(idx) ?? 0) + give);
+        consumed += give;
+      }
+      surplus -= consumed;
+      if (consumed < 0.01) break;
+    }
+  }
+
+  for (const p of remaining) {
+    p.restMinutes = Math.round(alloc.get(p.cp.index) ?? 0);
+  }
+}
+
 /**
  * Simulate arrival at all remaining CPs using leg-by-leg fatigue.
  * Un-fatigues the current pace to get base pace, then re-applies fatigue
- * at the midpoint of each leg.
+ * at the midpoint of each leg. Also allocates recommended rest and computes
+ * the scheduled (with-rest) arrival for each CP.
  */
 export function calcFullProjection(
   currentKm: number,
@@ -195,7 +318,7 @@ export function calcFullProjection(
   let simKm = currentKm;
   let simTimeMs = now.getTime();
 
-  return checkpoints
+  const projections: CPProjection[] = checkpoints
     .filter((cp) => cp.km > currentKm)
     .map((cp) => {
       const midKm = (simKm + cp.km) / 2;
@@ -217,10 +340,24 @@ export function calcFullProjection(
         cp,
         targetArrival,
         predictedArrival,
+        scheduledArrival: predictedArrival, // provisional; set below
+        restMinutes: 0, // filled in by allocateRest below
         vsTargetMin,
         vsCutoffMin,
         willMissTarget: vsTargetMin < 0,
         willMissCutoff: vsCutoffMin < 0,
       };
     });
+
+  // Sports-medicine rest allocation across the remaining CPs.
+  allocateRest(projections);
+
+  // Scheduled arrival = predicted + cumulative rest of *preceding* CPs.
+  let cumRestMs = 0;
+  for (const p of projections) {
+    p.scheduledArrival = new Date(p.predictedArrival.getTime() + cumRestMs);
+    cumRestMs += p.restMinutes * 60_000;
+  }
+
+  return projections;
 }

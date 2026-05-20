@@ -14,7 +14,7 @@ import type { ConvenienceStore } from '../utils/convenience';
 import { getNextStores, minutesToStore } from '../utils/convenience';
 import { getNextToilets } from '../utils/toilet';
 import type { ToiletEntry } from '../utils/toilet';
-import { formatTime, formatMargin, formatPace, formatMinutes } from '../utils/pace';
+import { formatTime, formatDayTime, formatMargin, formatPace, formatMinutes } from '../utils/pace';
 import type { PaceInfo, CPProjection } from '../utils/pace';
 import { getSettings, loadCpVisits, saveCpVisits } from '../utils/storage';
 import type { CPVisit } from '../utils/storage';
@@ -455,9 +455,9 @@ export function MainScreen({
                     <tr className="text-gray-400 border-b border-gray-700">
                       <th className="text-left pb-1">CP</th>
                       <th className="text-right pb-1">目標着</th>
-                      <th className="text-right pb-1">予想着</th>
-                      <th className="text-right pb-1">関門</th>
+                      <th className="text-right pb-1">到着予定</th>
                       <th className="text-right pb-1">差</th>
+                      <th className="text-right pb-1">休憩</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -471,21 +471,35 @@ export function MainScreen({
                         p.cp.km === 100
                           ? 'ゴール'
                           : `CP${p.cp.index}`;
-                      const vsMin = Math.round(Math.abs(p.vsTargetMin));
-                      const vsLabel = p.vsTargetMin >= 0 ? `+${vsMin}m` : `-${vsMin}m`;
+                      const vsMinRaw = Math.round(
+                        (p.targetArrival.getTime() - p.scheduledArrival.getTime()) / 60000
+                      );
+                      const vsLabel =
+                        vsMinRaw >= 0 ? `+${vsMinRaw}m` : `-${Math.abs(vsMinRaw)}m`;
+                      const restLabel =
+                        p.cp.km === 100 || p.restMinutes <= 0
+                          ? '—'
+                          : formatMinutes(p.restMinutes);
                       return (
                         <tr key={p.cp.km} className={`${rowColor} border-b border-gray-800 last:border-0`}>
                           <td className="py-1 pr-1 font-bold">{label}</td>
-                          <td className="py-1 text-right font-mono">{formatTime(p.targetArrival)}</td>
-                          <td className="py-1 text-right font-mono font-bold">{formatTime(p.predictedArrival)}</td>
-                          <td className="py-1 text-right font-mono text-gray-400">{formatTime(p.cp.cutoff)}</td>
+                          <td className="py-1 text-right font-mono">{formatDayTime(p.targetArrival, effectiveStartDate)}</td>
+                          <td className="py-1 text-right font-mono font-bold">{formatDayTime(p.scheduledArrival, effectiveStartDate)}</td>
                           <td className="py-1 text-right font-mono">{vsLabel}</td>
+                          <td className="py-1 text-right font-mono text-sky-300">{restLabel}</td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
-                <p className="text-gray-600 text-xs mt-2">予想着はペース+疲労モデルで自動更新</p>
+                <p className="text-gray-600 text-xs mt-2">
+                  到着予定は現在ペース＋疲労モデル＋推奨休憩で自動更新。休憩は26h目標に間に合う範囲でスポーツ医学に基づき配分。
+                </p>
+                {projections.some((p) => p.cp.km === 100 && p.vsTargetMin <= 0) && (
+                  <p className="text-orange-400 text-xs mt-1">
+                    ⚠️ 現在のペースでは26h目標に間に合いません。ペースを上げてください。
+                  </p>
+                )}
               </div>
             )}
           </div>
