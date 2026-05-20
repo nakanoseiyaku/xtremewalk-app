@@ -27,7 +27,7 @@ function getMockKm(): number | null {
   return isNaN(n) ? null : n;
 }
 
-export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null): GPSState {
+export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRaceActive = false): GPSState {
   // Mock km: prefer external (from debug panel) → URL param → null
   const initialMockKm = externalMockKm ?? getMockKm();
 
@@ -77,25 +77,31 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null): GPS
         return;
       }
 
-      // Find nearest km
-      const nearest = findNearestKm(currentPos, kmPoints, prevKmIndexRef.current);
+      // Only compute km position when the race is active.
+      // Before the race starts the user's home GPS may coincidentally map
+      // to a non-zero km point on the course — this prevents that confusion.
+      let smoothedKm = prevKmRef.current;
+      if (isRaceActive) {
+        const nearest = findNearestKm(currentPos, kmPoints, prevKmIndexRef.current);
 
-      // km rollback prevention: if new_km < prev_km - 0.5, skip
-      if (nearest.km < prevKmRef.current - 0.5) {
-        prevPositionRef.current = currentPos;
-        return;
+        // km rollback prevention: if new_km < prev_km - 0.5, skip
+        if (nearest.km < prevKmRef.current - 0.5) {
+          prevPositionRef.current = currentPos;
+          return;
+        }
+
+        // Smoothing: average of last 3 valid km readings
+        kmWindowRef.current.push(nearest.km);
+        if (kmWindowRef.current.length > 3) kmWindowRef.current.shift();
+        smoothedKm =
+          kmWindowRef.current.reduce((a, b) => a + b, 0) /
+          kmWindowRef.current.length;
+
+        prevKmIndexRef.current = nearest.index;
+        prevKmRef.current = smoothedKm;
       }
 
-      // Smoothing: average of last 3 valid km readings
-      kmWindowRef.current.push(nearest.km);
-      if (kmWindowRef.current.length > 3) kmWindowRef.current.shift();
-      const smoothedKm =
-        kmWindowRef.current.reduce((a, b) => a + b, 0) /
-        kmWindowRef.current.length;
-
       prevPositionRef.current = currentPos;
-      prevKmIndexRef.current = nearest.index;
-      prevKmRef.current = smoothedKm;
 
       // Track km-5min-ago
       const now = Date.now();
@@ -124,7 +130,7 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null): GPS
         bearing,
         status: accuracy <= 20 ? 'active' : 'degraded',
         lastUpdate: new Date(pos.timestamp),
-        kmIndex: nearest.index,
+        kmIndex: prevKmIndexRef.current,
       });
     },
     [kmPoints]

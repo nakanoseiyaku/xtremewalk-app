@@ -110,7 +110,7 @@ export default function App() {
   const lastWeatherPosRef = useRef<{ lat: number; lng: number } | null>(null);
 
   // Hooks
-  const gps = useGPS(kmPointsData, mockKm);
+  const gps = useGPS(kmPointsData, mockKm, appState === 'active');
   const wakeLock = useWakeLock();
   const battery = useBattery();
   const deadman = useDeadman(appState === 'active');
