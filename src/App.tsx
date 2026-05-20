@@ -230,7 +230,7 @@ const screenSleep = useScreenSleep(battery.charging);
 
   // Compute full CP projections when pace/km changes
   useEffect(() => {
-    if (paceInfo.currentPaceKmH <= 0 || appState !== 'active') return;
+    if (appState !== 'active') return;
     const s = getSettings();
     const p = calcFullProjection(
       gps.currentKm,

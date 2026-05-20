@@ -83,6 +83,9 @@ export function MainScreen({
   const card = nightMode ? 'bg-gray-900 border-gray-800' : 'bg-gray-800 border-gray-700';
   const accent = nightMode ? 'text-amber-400' : 'text-amber-400';
 
+  // Before a real pace is measured, the projection list shows the 26h target plan.
+  const isProvisionalForecast = paceInfo.currentPaceKmH <= 0;
+
   // Find next CP (first CP with km > currentKm)
   const nextCp = checkpoints.find((cp) => cp.km > gps.currentKm) ?? null;
 
@@ -445,7 +448,7 @@ export function MainScreen({
               onClick={() => setShowProjection((v) => !v)}
               className="w-full flex justify-between items-center"
             >
-              <h3 className={`font-bold ${accent}`}>各CP到着予測</h3>
+              <h3 className={`font-bold ${accent}`}>各CP到着予測{isProvisionalForecast ? '（暫定）' : ''}</h3>
               <span className="text-gray-400 text-sm">{showProjection ? '▲ 閉じる' : '▼ 開く'}</span>
             </button>
             {showProjection && (
@@ -493,9 +496,11 @@ export function MainScreen({
                   </tbody>
                 </table>
                 <p className="text-gray-600 text-xs mt-2">
-                  到着予定は現在ペース＋疲労モデル＋推奨休憩で自動更新。休憩は26h目標に間に合う範囲でスポーツ医学に基づき配分。
+                  {isProvisionalForecast
+                    ? '暫定表示（26h目標ペース基準）。歩き始めて実ペースが計測されると自動で更新されます。'
+                    : '到着予定は現在ペース＋疲労モデル＋推奨休憩で自動更新。休憩は26h目標に間に合う範囲でスポーツ医学に基づき配分。'}
                 </p>
-                {projections.some((p) => p.cp.km === 100 && p.vsTargetMin <= 0) && (
+                {projections.some((p) => p.cp.km === 100 && p.vsTargetMin < 0) && (
                   <p className="text-orange-400 text-xs mt-1">
                     ⚠️ 現在のペースでは26h目標に間に合いません。ペースを上げてください。
                   </p>

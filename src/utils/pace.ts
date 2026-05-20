@@ -213,20 +213,22 @@ const REST_PARAMS: Record<number, RestParam> = {
 // Surplus-redistribution priority when a CP hits its max (CP3 first).
 const REDISTRIBUTE_ORDER = [3, 2, 4, 5, 1];
 
+// Provisional rest budget (minutes) used before a real pace is measured —
+// roughly the sports-medicine "ideal" total for a 26h plan.
+const PROVISIONAL_REST_BUDGET_MIN = 100;
+
 /**
- * Allocate a total rest budget T (= goal slack vs 26h target) across the
- * remaining non-goal CPs using a sports-medicine-informed weighting.
- * Mutates restMinutes in place.
+ * Allocate a total rest budget (minutes) across the remaining non-goal CPs
+ * using a sports-medicine-informed weighting. Mutates restMinutes in place.
  */
-function allocateRest(projections: CPProjection[]): void {
+function allocateRest(projections: CPProjection[], budgetMin: number): void {
   for (const p of projections) p.restMinutes = 0;
 
-  const goal = projections.find((p) => p.cp.km === 100);
   const remaining = projections.filter(
     (p) => p.cp.km !== 100 && REST_PARAMS[p.cp.index] !== undefined
   );
 
-  const T = goal ? Math.max(0, goal.vsTargetMin) : 0;
+  const T = Math.max(0, budgetMin);
   if (T <= 0 || remaining.length === 0) return;
 
   // Stamina bias on base weights, using T as the walker's standing proxy.
@@ -310,7 +312,34 @@ export function calcFullProjection(
   targetHours: number,
   now: Date = new Date()
 ): CPProjection[] {
-  if (currentPaceKmH <= 0) return [];
+  const remainingCps = checkpoints.filter((cp) => cp.km > currentKm);
+  if (remainingCps.length === 0) return [];
+
+  // Provisional forecast: no measured pace yet — show the 26h target plan so
+  // the list is visible from the start of the walk. Switches to the live
+  // pace-based forecast as soon as a real pace is measured.
+  if (currentPaceKmH <= 0) {
+    const planned: CPProjection[] = remainingCps.map((cp) => {
+      const targetArrival = new Date(
+        startDate.getTime() + (cp.km / 100) * targetHours * 3600 * 1000
+      );
+      const vsCutoffMin =
+        (cp.cutoff.getTime() - targetArrival.getTime()) / 60000;
+      return {
+        cp,
+        targetArrival,
+        predictedArrival: targetArrival,
+        scheduledArrival: targetArrival,
+        restMinutes: 0,
+        vsTargetMin: 0,
+        vsCutoffMin,
+        willMissTarget: false,
+        willMissCutoff: vsCutoffMin < 0,
+      };
+    });
+    allocateRest(planned, PROVISIONAL_REST_BUDGET_MIN);
+    return planned;
+  }
 
   // Un-fatigue: recover the "fresh" base pace
   const basePaceKmH = currentPaceKmH * fatigueFactor(currentKm);
@@ -318,9 +347,7 @@ export function calcFullProjection(
   let simKm = currentKm;
   let simTimeMs = now.getTime();
 
-  const projections: CPProjection[] = checkpoints
-    .filter((cp) => cp.km > currentKm)
-    .map((cp) => {
+  const projections: CPProjection[] = remainingCps.map((cp) => {
       const midKm = (simKm + cp.km) / 2;
       const legPaceKmH = basePaceKmH / fatigueFactor(midKm);
       const legHours = (cp.km - simKm) / legPaceKmH;
@@ -349,8 +376,10 @@ export function calcFullProjection(
       };
     });
 
-  // Sports-medicine rest allocation across the remaining CPs.
-  allocateRest(projections);
+  // Sports-medicine rest allocation across the remaining CPs, budgeted by the
+  // goal's slack vs the 26h target.
+  const goal = projections.find((p) => p.cp.km === 100);
+  allocateRest(projections, goal ? Math.max(0, goal.vsTargetMin) : 0);
 
   // Scheduled arrival = predicted + cumulative rest of *preceding* CPs.
   let cumRestMs = 0;
