@@ -488,7 +488,7 @@ export function MainScreen({
                           <td className="py-1 pr-1 font-bold">{label}</td>
                           <td className="py-1 text-right font-mono">{formatDayTime(p.targetArrival, effectiveStartDate)}</td>
                           <td className="py-1 text-right font-mono font-bold">{formatDayTime(p.scheduledArrival, effectiveStartDate)}</td>
-                          <td className="py-1 text-right font-mono">{vsLabel}</td>
+                          <td className={`py-1 text-right font-mono ${vsMinRaw < 0 ? 'text-red-400' : ''}`}>{vsLabel}</td>
                           <td className="py-1 text-right font-mono text-sky-300">{restLabel}</td>
                         </tr>
                       );
