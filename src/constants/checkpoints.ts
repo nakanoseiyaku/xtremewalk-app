@@ -97,8 +97,7 @@ export const CHECKPOINT_OFFSETS: CheckpointOffset[] = [
   { index: 6, name: 'ゴール livedoorアーバンスポーツパーク（江東区）', km: 100, lat: 35.6327,   lng: 139.7875,  cutoffHours: 27.5, openHours: 15.5 },
 ];
 
-export function buildCheckpoints(raceDate: string, startTime: string): Checkpoint[] {
-  const raceStart = new Date(`${raceDate}T${startTime}:00+09:00`);
+export function buildCheckpoints(raceStart: Date): Checkpoint[] {
   return CHECKPOINT_OFFSETS.map((o) => ({
     index: o.index,
     name: o.name,

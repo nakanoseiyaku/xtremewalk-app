@@ -14,6 +14,7 @@ export interface AlertInput {
   weatherCondition: WeatherCondition | null;
   paceKmH: number;
   active: boolean;
+  raceStartedAt: number | null;
   stores: ConvenienceStore[];
   wakeScreen?: (ms?: number) => void;
   isWalking: boolean | null;
@@ -172,20 +173,23 @@ export function useAlerts(input: AlertInput) {
     rainAlerted: false,
     cutoffAlertLast: 0,
     etaNegativeLast: 0,
-    waterLast: Date.now(),
+    waterLast: Number.MAX_SAFE_INTEGER, // anchored to actual race start by an effect
     kmMilestones: new Set(),
     prevKm: null,
     wall45Warned: false,
     wall75Warned: false,
-    nutritionLast: Date.now() - 30 * 60 * 1000, // first alert fires at 30 min after start
+    nutritionLast: Number.MAX_SAFE_INTEGER, // anchored to actual race start by an effect
     wall28NutritionWarned: false,
-    stretchLast: Date.now() - 60 * 60 * 1000, // first alert fires at 60 min after start
+    stretchLast: Number.MAX_SAFE_INTEGER, // anchored to actual race start by an effect
     stretchIndex: 0,
     km30KneeWarned: false,
     nutritionDueTimeout: null,
     cadenceLowLast: 0,
     cadenceMsgIndex: 0,
   });
+
+  // Guards the one-time anchoring of elapsed-time reminders to the race start.
+  const elapsedAnchoredRef = useRef(false);
 
   const [nutritionDue, setNutritionDue] = useState(false);
   const setNutritionDueRef = useRef(setNutritionDue);
@@ -452,6 +456,25 @@ export function useAlerts(input: AlertInput) {
       speakAndWake('残り4キロ。最後の補給チャンスです。ゴールまでもう少しです！');
     }
   }, []); // stable — GPS updates do not recreate this callback
+
+  // Anchor elapsed-time reminders (water/nutrition/stretch) to the ACTUAL race
+  // start. flagsRef is created at hook mount (pre-race) so this cannot be done
+  // in the initializer. Reset on de-activation so a new race re-anchors.
+  useEffect(() => {
+    if (!input.active) {
+      elapsedAnchoredRef.current = false;
+      return;
+    }
+    if (elapsedAnchoredRef.current) return;
+    elapsedAnchoredRef.current = true;
+    const now = Date.now();
+    const rawAnchor = input.raceStartedAt ?? now;
+    const flags = flagsRef.current;
+    // Cap so a mid-race reload doesn't replay a long-overdue catch-up burst.
+    flags.nutritionLast = Math.max(rawAnchor, now - 45 * 60 * 1000);
+    flags.waterLast = Math.max(rawAnchor, now - 60 * 60 * 1000);
+    flags.stretchLast = Math.max(rawAnchor, now - 90 * 60 * 1000);
+  }, [input.active, input.raceStartedAt]);
 
   // Run alerts check every 60 seconds
   useEffect(() => {

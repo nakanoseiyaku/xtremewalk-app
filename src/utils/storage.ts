@@ -1,19 +1,15 @@
 // localStorage wrapper with fallback for environments where storage is unavailable
 
 export interface AppSettings {
-  startTime: string; // "HH:MM"
   emergencyPhone: string;
   claudeApiKey: string;
   targetHours: number; // 目標完走時間（時間）
-  raceDate: string;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
-  startTime: '07:30',
   emergencyPhone: '',
   claudeApiKey: '',
   targetHours: 26,
-  raceDate: '2026-05-23',
 };
 
 function safeGet(key: string): string | null {
@@ -62,6 +58,20 @@ export function saveAppState(state: string): void {
   safeSet('xtremewalk_state', state);
 }
 
+// Actual race start timestamp (epoch ms) — recorded when the user presses
+// the start button. null clears it.
+export function saveRaceStartedAt(ts: number | null): void {
+  if (ts === null) safeRemove('xtremewalk_race_started_at');
+  else safeSet('xtremewalk_race_started_at', String(ts));
+}
+
+export function loadRaceStartedAt(): number | null {
+  const raw = safeGet('xtremewalk_race_started_at');
+  if (raw === null) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function getWeatherCache(): { data: unknown; ts: number } | null {
   const raw = safeGet('xtremewalk_weather');
   if (!raw) return null;
@@ -82,6 +92,7 @@ export function clearAll(): void {
   safeRemove('xtremewalk_weather');
   safeRemove('xtremewalk_pace_history');
   safeRemove('xtremewalk_cp_visits');
+  safeRemove('xtremewalk_race_started_at');
 }
 
 export function savePaceHistory(history: { km: number; paceKmH: number }[]): void {

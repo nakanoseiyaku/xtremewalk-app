@@ -7,7 +7,7 @@ import { useBattery } from './hooks/useBattery';
 import { useAlerts } from './hooks/useAlerts';
 import { buildCheckpoints } from './constants/checkpoints';
 import { isNightMode } from './constants/colors';
-import { getAppState, saveAppState, getSettings, savePaceHistory, loadPaceHistory, saveCpVisits } from './utils/storage';
+import { getAppState, saveAppState, getSettings, savePaceHistory, loadPaceHistory, saveCpVisits, loadRaceStartedAt, saveRaceStartedAt } from './utils/storage';
 import { useTTS } from './hooks/useTTS';
 import { MockPanel, isDebugMode, getMockKm } from './components/MockPanel';
 import { useScreenSleep } from './hooks/useScreenSleep';
@@ -99,20 +99,26 @@ export default function App() {
   // which transitions appState. GPS updates don't change appState, so no wasted reads.
   const [appState, setAppState] = useState<AppState>(() => {
     const saved = getAppState();
-    if (['setup', 'pre_start', 'active', 'goal', 'retired'].includes(saved)) {
-      return saved as AppState;
+    const valid = ['setup', 'pre_start', 'active', 'goal', 'retired'].includes(saved)
+      ? (saved as AppState)
+      : 'setup';
+    // Legacy migration: a user mid-race on a pre-this-version build has no
+    // recorded start timestamp — backfill it before the first render.
+    if (valid === 'active' && loadRaceStartedAt() === null) {
+      saveRaceStartedAt(Date.now());
     }
-    return 'setup';
+    return valid;
   });
 
-  const effectiveSettings = useMemo(() => getSettings(), [appState]);
-  const effectiveCheckpoints = useMemo(
-    () => buildCheckpoints(effectiveSettings.raceDate, effectiveSettings.startTime),
-    [effectiveSettings]
-  );
+  // Race start = the moment the user pressed the start button (persisted).
+  const raceStartedAt = useMemo(() => loadRaceStartedAt(), [appState]);
   const effectiveStartDate = useMemo(
-    () => new Date(`${effectiveSettings.raceDate}T${effectiveSettings.startTime}:00+09:00`),
-    [effectiveSettings]
+    () => (raceStartedAt != null ? new Date(raceStartedAt) : new Date()),
+    [raceStartedAt]
+  );
+  const effectiveCheckpoints = useMemo(
+    () => buildCheckpoints(effectiveStartDate),
+    [effectiveStartDate]
   );
 
   const [nightMode, setNightMode] = useState(isNightMode);
@@ -260,6 +266,7 @@ const screenSleep = useScreenSleep(battery.charging);
     weatherCondition,
     paceKmH: paceInfo.currentPaceKmH,
     active: appState === 'active',
+    raceStartedAt,
     stores: storesData as import('./utils/convenience').ConvenienceStore[],
     wakeScreen: screenSleep.wakeFor,
     isWalking: motion.isWalking,
@@ -272,10 +279,12 @@ const screenSleep = useScreenSleep(battery.charging);
       kmSnapshotsRef.current = [];
       savePaceHistory([]);
       saveCpVisits([]);
+      saveRaceStartedAt(Date.now());
     }
     if (state === 'setup') {
       savePaceHistory([]);
       saveCpVisits([]);
+      saveRaceStartedAt(null);
     }
     setAppState(state);
     saveAppState(state);
@@ -332,6 +341,7 @@ const screenSleep = useScreenSleep(battery.charging);
       paceInfo={paceInfo}
       weatherCondition={weatherCondition}
       checkpoints={effectiveCheckpoints}
+      raceStartedAt={raceStartedAt}
       stores={storesData as import('./utils/convenience').ConvenienceStore[]}
       toilets={enrichedToilets}
       nightMode={nightMode}

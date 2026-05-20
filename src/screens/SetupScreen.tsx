@@ -68,23 +68,6 @@ export function SetupScreen({ onComplete }: SetupScreenProps) {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Start time */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              スタート予定時刻
-            </label>
-            <input
-              type="time"
-              value={settings.startTime}
-              onChange={(e) =>
-                setSettings((s) => ({ ...s, startTime: e.target.value }))
-              }
-              className="w-full bg-gray-800 border border-gray-600 rounded-xl px-4 py-4 text-white text-2xl font-mono focus:outline-none focus:border-amber-400"
-              required
-            />
-            <p className="text-gray-500 text-xs mt-1">通常 07:30〜07:42</p>
-          </div>
-
           {/* Target finish time */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -109,37 +92,6 @@ export function SetupScreen({ onComplete }: SetupScreenProps) {
             </div>
             <p className="text-gray-500 text-xs mt-1">
               チャレンジ制限: 26h / エキスパート制限: 24h
-            </p>
-          </div>
-
-          {/* Race date */}
-          <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              大会日
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="date"
-                value={settings.raceDate}
-                onChange={(e) =>
-                  setSettings((s) => ({ ...s, raceDate: e.target.value }))
-                }
-                className="flex-1 bg-gray-800 border border-gray-600 rounded-xl px-4 py-4 text-white text-xl font-mono focus:outline-none focus:border-amber-400"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  const today = new Date().toISOString().slice(0, 10);
-                  setSettings((s) => ({ ...s, raceDate: today }));
-                }}
-                className="flex-shrink-0 bg-gray-700 text-gray-300 text-sm font-bold px-3 rounded-xl border border-gray-600 active:scale-95 transition-transform leading-tight"
-              >
-                今日に<br />設定
-              </button>
-            </div>
-            <p className="text-gray-500 text-xs mt-1">
-              テスト時は「今日に設定」→スタート時刻を現在時刻に近い値に変更すると意味ある数値が表示されます
             </p>
           </div>
 

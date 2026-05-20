@@ -30,6 +30,7 @@ interface MainScreenProps {
   paceInfo: PaceInfo;
   weatherCondition: WeatherCondition | null;
   checkpoints: Checkpoint[];
+  raceStartedAt: number | null;
   stores: ConvenienceStore[];
   toilets: ToiletEntry[];
   nightMode: boolean;
@@ -54,6 +55,7 @@ export function MainScreen({
   paceInfo,
   weatherCondition,
   checkpoints,
+  raceStartedAt,
   stores,
   toilets,
   nightMode,
@@ -117,9 +119,9 @@ export function MainScreen({
 
   const marginIsNegative =
     paceInfo.marginMinutes !== null && paceInfo.marginMinutes < 0;
-  // Target arrival for next CP: computed directly from settings (independent of pace data)
-  // so it shows even when pace=0 (race just started, or GPS lost)
-  const effectiveStartDate = new Date(`${settings.raceDate}T${settings.startTime}:00+09:00`);
+  // Target arrival for next CP: computed from the actual race start (button press),
+  // independent of pace data so it shows even when pace=0 (race just started, or GPS lost)
+  const effectiveStartDate = raceStartedAt != null ? new Date(raceStartedAt) : new Date();
   const nextCpTargetArrival = nextCp
     ? new Date(effectiveStartDate.getTime() + (nextCp.km / 100) * settings.targetHours * 3_600_000)
     : null;
@@ -685,7 +687,7 @@ export function MainScreen({
           {/* Setup reset */}
           <button
             onClick={() => {
-              if (confirm('設定画面に戻りますか？\n（スタート時刻・APIキー等の設定は保持されます）')) onSetup();
+              if (confirm('設定画面に戻りますか？\n（APIキー等の設定は保持されます）')) onSetup();
             }}
             className="w-full min-h-[56px] bg-gray-900 text-gray-600 text-sm font-bold rounded-2xl border border-gray-800 active:scale-95 transition-transform"
           >
