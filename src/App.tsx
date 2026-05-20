@@ -14,6 +14,7 @@ import { useScreenSleep } from './hooks/useScreenSleep';
 import { fetchWeather, getCurrentWeather } from './utils/weather';
 import { calcPaceInfo, calcFullProjection } from './utils/pace';
 import type { PaceInfo, CPProjection } from './utils/pace';
+import type { PacePoint } from './components/PaceGraph';
 import type { WeatherData } from './utils/weather';
 import { haversineDistance } from './utils/gps';
 
@@ -122,6 +123,7 @@ export default function App() {
   const [projections, setProjections] = useState<CPProjection[]>([]);
 
   const kmSnapshotsRef = useRef<KmSnapshot[]>([]);
+  const paceHistoryRef = useRef<PacePoint[]>([]);
   const gpsLostSinceRef = useRef<Date | null>(null);
   const lastWeatherPosRef = useRef<{ lat: number; lng: number } | null>(null);
 
@@ -193,6 +195,15 @@ export default function App() {
         nextCpTargetArrival,
       );
       setPaceInfo(info);
+
+      // Accumulate pace history for graph (1 point per km)
+      if (info.currentPaceKmH > 0) {
+        const history = paceHistoryRef.current;
+        const last = history[history.length - 1];
+        if (!last || gps.currentKm - last.km >= 1) {
+          paceHistoryRef.current = [...history, { km: gps.currentKm, paceKmH: info.currentPaceKmH }];
+        }
+      }
     }
   }, [gps.currentKm, appState]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -286,6 +297,7 @@ export default function App() {
       isSleeping={screenSleep.isSleeping}
       wakeScreen={screenSleep.wakeFor}
       onSleepNow={screenSleep.sleep}
+      paceHistory={paceHistoryRef.current}
     />
     </>
   );

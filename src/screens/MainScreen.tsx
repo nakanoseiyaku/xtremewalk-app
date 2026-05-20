@@ -18,6 +18,8 @@ import { formatTime, formatMargin, formatPace } from '../utils/pace';
 import type { PaceInfo, CPProjection } from '../utils/pace';
 import { getSettings } from '../utils/storage';
 import { getActionAdvice } from '../utils/actionAdvice';
+import { PaceGraph } from '../components/PaceGraph';
+import type { PacePoint } from '../components/PaceGraph';
 import { haversineDistance } from '../utils/gps';
 
 interface ToiletEntry {
@@ -45,6 +47,7 @@ interface MainScreenProps {
   isSleeping?: boolean;
   wakeScreen?: (ms?: number) => void;
   onSleepNow?: () => void;
+  paceHistory?: PacePoint[];
 }
 
 type SubScreen = 'main' | 'ai_chat' | 'cp_arrival';
@@ -67,6 +70,7 @@ export function MainScreen({
   isSleeping = false,
   wakeScreen,
   onSleepNow,
+  paceHistory = [],
 }: MainScreenProps) {
   const [subScreen, setSubScreen] = useState<SubScreen>('main');
   const [showSOS, setShowSOS] = useState(false);
@@ -349,6 +353,15 @@ export function MainScreen({
             </div>
           )}
         </div>
+
+        {/* ===== PACE HISTORY GRAPH ===== */}
+        <PaceGraph
+          history={paceHistory}
+          currentKm={gps.currentKm}
+          requiredPaceKmH={paceInfo.requiredPaceKmH}
+          predictedPaceKmH={paceInfo.predictedPaceKmH}
+          nightMode={nightMode}
+        />
 
         {/* ===== FULL CP PROJECTION TABLE ===== */}
         {projections.length > 0 && (
