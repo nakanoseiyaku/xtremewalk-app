@@ -195,6 +195,9 @@ export function MainScreen({
                   {nextCp.name}
                 </h2>
                 <p className="text-gray-400 text-sm">{nextCp.km}km地点</p>
+                <p className="text-white text-2xl font-mono font-bold mt-1">
+                  あと {Math.max(0, nextCp.km - gps.currentKm).toFixed(1)}<span className="text-base font-normal text-gray-400"> km</span>
+                </p>
               </div>
 
               {/* ETA and cutoff */}
