@@ -55,6 +55,21 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
   // Sliding window for km-5min-ago tracking
   const km5minWindowRef = useRef<Array<{ km: number; ts: number }>>([]);
 
+  // Time of last accepted GPS reading — used for forward-jump speed limiting.
+  // Initialized to 0 (= "never accepted"). Reset to Date.now() when race becomes active.
+  const lastAcceptedTimeRef = useRef<number>(0);
+
+  // When race becomes active, reset km tracking so GPS can't teleport from home to
+  // wherever the route happens to pass near the user's location.
+  useEffect(() => {
+    if (isRaceActive) {
+      lastAcceptedTimeRef.current = Date.now();
+      prevKmRef.current = 0;
+      kmWindowRef.current = [];
+      prevKmIndexRef.current = null;
+    }
+  }, [isRaceActive]);
+
   const handlePosition = useCallback(
     (pos: GeolocationPosition) => {
       const { latitude, longitude, accuracy } = pos.coords;
@@ -84,11 +99,31 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
       if (isRaceActive) {
         const nearest = findNearestKm(currentPos, kmPoints, prevKmIndexRef.current);
 
+        // Forward-jump speed limit: the km reading cannot advance more than
+        // (time elapsed × 10 km/h) in one step, with a 2 km minimum tolerance
+        // for GPS inaccuracy near the course start.
+        // This prevents a user at home (e.g. 76 km on the route) from instantly
+        // jumping to 76 km when the app starts.
+        const nowMs = Date.now();
+        const elapsedHours =
+          lastAcceptedTimeRef.current > 0
+            ? (nowMs - lastAcceptedTimeRef.current) / 3600000
+            : 0;
+        const maxForwardKm = Math.max(2.0, elapsedHours * 10);
+
+        if (nearest.km > prevKmRef.current + maxForwardKm) {
+          prevPositionRef.current = currentPos;
+          return;
+        }
+
         // km rollback prevention: if new_km < prev_km - 0.5, skip
         if (nearest.km < prevKmRef.current - 0.5) {
           prevPositionRef.current = currentPos;
           return;
         }
+
+        // Accept this reading
+        lastAcceptedTimeRef.current = nowMs;
 
         // Smoothing: average of last 3 valid km readings
         kmWindowRef.current.push(nearest.km);
@@ -133,7 +168,7 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
         kmIndex: prevKmIndexRef.current,
       });
     },
-    [kmPoints]
+    [isRaceActive, kmPoints]  // isRaceActive added to fix stale-closure bug
   );
 
   const handleError = useCallback(() => {
