@@ -162,6 +162,34 @@ export function MainScreen({
     setSubScreen('main');
   };
 
+  // Manual "CP到着" button: record an arrival (check-in) for the current CP
+  // after a confirmation, then open the arrival screen.
+  const handleManualArrival = () => {
+    if (!effectiveCp) return;
+    const cp = effectiveCp;
+    if (cpVisits.some((v) => v.km === cp.km)) {
+      setSubScreen('cp_arrival'); // already checked in — just open
+      return;
+    }
+    const label = cp.km === 100 ? 'ゴール' : `CP${cp.index}`;
+    if (!confirm(`${label} に到着を記録しますか？\n（${cp.name}）`)) return;
+    setCpVisits((prev) =>
+      prev.some((v) => v.km === cp.km)
+        ? prev
+        : [
+            ...prev,
+            {
+              km: cp.km,
+              index: cp.index,
+              name: cp.name,
+              arrivedAt: Date.now(),
+              departedAt: null,
+            },
+          ]
+    );
+    setSubScreen('cp_arrival');
+  };
+
   // Persist visit records
   useEffect(() => {
     saveCpVisits(cpVisits);
@@ -647,7 +675,7 @@ export function MainScreen({
           {/* CP arrival */}
           {nextCp && (
             <button
-              onClick={() => setSubScreen('cp_arrival')}
+              onClick={handleManualArrival}
               className="w-full min-h-[72px] bg-blue-700 text-white text-xl font-bold rounded-2xl active:scale-95 transition-transform"
             >
               CP到着 🏁
