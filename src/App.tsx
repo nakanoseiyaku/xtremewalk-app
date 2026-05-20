@@ -18,11 +18,19 @@ import type { PaceInfo, CPProjection } from './utils/pace';
 import type { PacePoint } from './components/PaceGraph';
 import type { WeatherData } from './utils/weather';
 import { haversineDistance } from './utils/gps';
+import type { KmPoint } from './utils/gps';
+import { enrichToilets } from './utils/toilet';
 
 // Data imports
 import kmPointsData from './data/course_km_points.json';
 import storesData from './data/convenience_stores.json';
 import toiletsData from './data/toilets.json';
+
+// Pre-compute toilet km positions once at module load (not in a hook — data never changes)
+const enrichedToilets = enrichToilets(
+  toiletsData as { name: string; lat: number; lng: number }[],
+  kmPointsData as KmPoint[]
+);
 
 type AppState = 'setup' | 'pre_start' | 'active' | 'goal' | 'retired';
 
@@ -322,7 +330,7 @@ const screenSleep = useScreenSleep(battery.charging);
       weatherCondition={weatherCondition}
       checkpoints={effectiveCheckpoints}
       stores={storesData as import('./utils/convenience').ConvenienceStore[]}
-      toilets={toiletsData}
+      toilets={enrichedToilets}
       nightMode={nightMode}
       onRetire={() => transitionTo('retired')}
       onSetup={() => transitionTo('setup')}

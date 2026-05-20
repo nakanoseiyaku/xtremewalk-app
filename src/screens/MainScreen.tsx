@@ -12,6 +12,8 @@ import type { WeatherCondition } from '../utils/weather';
 import type { Checkpoint } from '../constants/checkpoints';
 import type { ConvenienceStore } from '../utils/convenience';
 import { getNextStores, minutesToStore } from '../utils/convenience';
+import { getNextToilets } from '../utils/toilet';
+import type { ToiletEntry } from '../utils/toilet';
 import { formatTime, formatMargin, formatPace } from '../utils/pace';
 import type { PaceInfo, CPProjection } from '../utils/pace';
 import { getSettings } from '../utils/storage';
@@ -19,13 +21,6 @@ import { getActionAdvice } from '../utils/actionAdvice';
 import { PaceGraph } from '../components/PaceGraph';
 import type { PacePoint } from '../components/PaceGraph';
 import { haversineDistance } from '../utils/gps';
-
-interface ToiletEntry {
-  name: string;
-  lat: number;
-  lng: number;
-  km_pos?: number;
-}
 
 interface MainScreenProps {
   gps: GPSState;
@@ -107,6 +102,7 @@ export function MainScreen({
 
   // Next stores
   const nextStores = getNextStores(stores, gps.currentKm, 3);
+  const nextToilets = getNextToilets(toilets, gps.currentKm, 2);
 
   const marginIsNegative =
     paceInfo.marginMinutes !== null && paceInfo.marginMinutes < 0;
@@ -461,6 +457,44 @@ export function MainScreen({
                         <p className="text-gray-400 text-xs">
                           約{Math.round(mins)}分
                         </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* ===== TOILETS SECTION ===== */}
+        <div className={`${card} border rounded-2xl p-4`}>
+          <h3 className={`font-bold ${accent} mb-3`}>🚻 前方のトイレ</h3>
+          {nextToilets.length === 0 ? (
+            <p className="text-gray-500 text-sm">前方にトイレ情報なし</p>
+          ) : (
+            <div className="space-y-3">
+              {nextToilets.map((toilet, i) => {
+                const distKm = toilet.km_pos - gps.currentKm;
+                const mins = paceInfo.currentPaceKmH > 0
+                  ? Math.round((distKm / paceInfo.currentPaceKmH) * 60)
+                  : null;
+                return (
+                  <div
+                    key={i}
+                    className="flex justify-between items-start border-b border-gray-700 last:border-0 pb-2 last:pb-0"
+                  >
+                    <div>
+                      <p className="font-bold text-sm text-white">{toilet.name}</p>
+                      {toilet.wheelchair && (
+                        <span className="text-blue-400 text-xs">♿ 車椅子可</span>
+                      )}
+                    </div>
+                    <div className="text-right flex-shrink-0 ml-3">
+                      <p className="text-white font-mono font-bold">
+                        {distKm.toFixed(1)}km
+                      </p>
+                      {mins !== null && (
+                        <p className="text-gray-400 text-xs">約{mins}分</p>
                       )}
                     </div>
                   </div>
