@@ -6,7 +6,7 @@ import { useWakeLock } from './hooks/useWakeLock';
 import { useBattery } from './hooks/useBattery';
 import { useDeadman } from './hooks/useDeadman';
 import { useAlerts } from './hooks/useAlerts';
-import { CHECKPOINTS } from './constants/checkpoints';
+import { buildCheckpoints } from './constants/checkpoints';
 import { isNightMode } from './constants/colors';
 import { getAppState, saveAppState, getSettings } from './utils/storage';
 import { MockPanel, isDebugMode, getMockKm } from './components/MockPanel';
@@ -20,7 +20,6 @@ import { haversineDistance } from './utils/gps';
 import kmPointsData from './data/course_km_points.json';
 import storesData from './data/convenience_stores.json';
 import toiletsData from './data/toilets.json';
-import { RACE_START_DATE } from './constants/checkpoints';
 
 type AppState = 'setup' | 'pre_start' | 'active' | 'goal' | 'retired';
 
@@ -85,6 +84,12 @@ function PreStartScreen({ onStart }: { onStart: () => void }) {
 }
 
 export default function App() {
+  // Compute effective checkpoints from current settings (raceDate + startTime)
+  // Re-computed every render so settings changes (after returning from setup) are picked up immediately
+  const _settings = getSettings();
+  const effectiveCheckpoints = buildCheckpoints(_settings.raceDate, _settings.startTime);
+  const effectiveStartDate = new Date(`${_settings.raceDate}T${_settings.startTime}:00+09:00`);
+
   const [appState, setAppState] = useState<AppState>(() => {
     const saved = getAppState();
     if (['setup', 'pre_start', 'active', 'goal', 'retired'].includes(saved)) {
@@ -102,6 +107,7 @@ export default function App() {
     predictedPaceKmH: 0,
     etaToNextCp: null,
     marginMinutes: null,
+    targetMarginMinutes: null,
     requiredPaceKmH: null,
     maxRestMinutes: null,
   });
@@ -164,35 +170,37 @@ export default function App() {
     const elapsedMin = old ? (now - old.ts) / 60000 : null;
 
     // Compute pace info
-    const nextCp = CHECKPOINTS.find((cp) => cp.km > gps.currentKm) ?? null;
+    const nextCp = effectiveCheckpoints.find((cp) => cp.km > gps.currentKm) ?? null;
     if (nextCp) {
+      const s = getSettings();
+      const nextCpTargetArrival = new Date(
+        effectiveStartDate.getTime() + (nextCp.km / 100) * s.targetHours * 3_600_000
+      );
       const info = calcPaceInfo(
         gps.currentKm,
         kmNMinAgo,
         elapsedMin,
         nextCp.km,
-        nextCp.cutoff
+        nextCp.cutoff,
+        nextCpTargetArrival,
       );
       setPaceInfo(info);
     }
-  }, [gps.currentKm, appState]);
+  }, [gps.currentKm, appState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Compute full CP projections when pace/km changes
   useEffect(() => {
     if (paceInfo.currentPaceKmH <= 0 || appState !== 'active') return;
     const s = getSettings();
-    const [h, m] = s.startTime.split(':').map(Number);
-    const sd = new Date(RACE_START_DATE);
-    sd.setHours(h, m, 0, 0);
     const p = calcFullProjection(
       gps.currentKm,
       paceInfo.currentPaceKmH,
-      CHECKPOINTS,
-      sd,
+      effectiveCheckpoints,
+      effectiveStartDate,
       s.targetHours,
     );
     setProjections(p);
-  }, [gps.currentKm, paceInfo.currentPaceKmH, appState]);
+  }, [gps.currentKm, paceInfo.currentPaceKmH, appState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Track GPS lost
   useEffect(() => {
@@ -257,7 +265,7 @@ export default function App() {
       deadman={deadman}
       paceInfo={paceInfo}
       weatherCondition={weatherCondition}
-      checkpoints={CHECKPOINTS}
+      checkpoints={effectiveCheckpoints}
       stores={storesData as import('./utils/convenience').ConvenienceStore[]}
       toilets={toiletsData}
       nightMode={nightMode}

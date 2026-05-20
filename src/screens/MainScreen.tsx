@@ -100,10 +100,12 @@ export function MainScreen({
 
   const marginIsNegative =
     paceInfo.marginMinutes !== null && paceInfo.marginMinutes < 0;
-  const marginIsClose =
-    paceInfo.marginMinutes !== null &&
-    paceInfo.marginMinutes >= 0 &&
-    paceInfo.marginMinutes < 30;
+  // Target arrival for next CP (from projections computed in App)
+  const nextCpProjection = projections.find((p) => p.cp.km === nextCp?.km) ?? null;
+  const nextCpTargetArrival = nextCpProjection?.targetArrival ?? null;
+  // Target margin status flags (vs 26h plan)
+  const targetMarginIsNegative = paceInfo.targetMarginMinutes !== null && paceInfo.targetMarginMinutes < 0;
+  const targetMarginIsNegativeBig = paceInfo.targetMarginMinutes !== null && paceInfo.targetMarginMinutes < -30;
 
   const openAIChat = (msg?: string) => {
     setAiInitialMessage(msg);
@@ -213,48 +215,63 @@ export function MainScreen({
                 </p>
               </div>
 
-              {/* ETA and cutoff */}
-              <div className="grid grid-cols-2 gap-3 mb-3">
+              {/* ETA | Target | Cutoff — 3 columns */}
+              <div className="grid grid-cols-3 gap-1 mb-3">
                 <div className="text-center">
                   <p className="text-gray-400 text-xs">予想到着</p>
-                  <p className="text-3xl font-mono font-bold text-white">
+                  <p className="text-xl font-mono font-bold text-white">
                     {paceInfo.etaToNextCp ? formatTime(paceInfo.etaToNextCp) : '--:--'}
                   </p>
                 </div>
                 <div className="text-center">
-                  <p className="text-gray-400 text-xs">制限時刻</p>
-                  <p className="text-3xl font-mono font-bold text-gray-300">
+                  <p className="text-amber-400 text-xs">目標時刻</p>
+                  <p className="text-xl font-mono font-bold text-amber-300">
+                    {nextCpTargetArrival ? formatTime(nextCpTargetArrival) : '--:--'}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-gray-500 text-xs">制限時刻</p>
+                  <p className="text-xl font-mono font-bold text-gray-500">
                     {formatTime(nextCp.cutoff)}
                   </p>
                 </div>
               </div>
 
-              {/* Margin */}
+              {/* Target margin (main KPI: vs 26h plan) */}
               <div
                 className={`rounded-xl p-3 text-center ${
-                  marginIsNegative
+                  marginIsNegative || targetMarginIsNegativeBig
                     ? 'bg-red-900 animate-pulse'
-                    : marginIsClose
+                    : targetMarginIsNegative
                     ? 'bg-orange-900'
                     : 'bg-green-900'
                 }`}
               >
-                <p className="text-xs text-gray-300 mb-1">マージン</p>
+                <p className="text-xs text-gray-300 mb-1">目標余裕</p>
                 <p
                   className={`text-3xl font-mono font-bold ${
-                    marginIsNegative
+                    marginIsNegative || targetMarginIsNegativeBig
                       ? 'text-red-300'
-                      : marginIsClose
+                      : targetMarginIsNegative
                       ? 'text-orange-300'
                       : 'text-green-300'
                   }`}
                 >
-                  {paceInfo.marginMinutes !== null
-                    ? (marginIsNegative ? '' : '✅ ') + formatMargin(paceInfo.marginMinutes)
+                  {paceInfo.targetMarginMinutes !== null
+                    ? (paceInfo.targetMarginMinutes >= 0 ? '✅ ' : '') + formatMargin(paceInfo.targetMarginMinutes)
                     : '--'}
                 </p>
                 {marginIsNegative && (
-                  <p className="text-red-400 text-sm font-bold mt-1">⚠ ペースを上げてください</p>
+                  <p className="text-red-400 text-sm font-bold mt-1">⚠ 関門に間に合いません！</p>
+                )}
+                {!marginIsNegative && targetMarginIsNegative && (
+                  <p className="text-orange-400 text-sm font-bold mt-1">⚠ 目標ペースに遅れています</p>
+                )}
+                {/* Secondary: cutoff margin (safety floor) */}
+                {paceInfo.marginMinutes !== null && (
+                  <p className={`text-xs mt-2 ${marginIsNegative ? 'text-red-300' : 'text-gray-400'}`}>
+                    関門余裕: {formatMargin(paceInfo.marginMinutes)}
+                  </p>
                 )}
               </div>
 
@@ -267,7 +284,7 @@ export function MainScreen({
                   </p>
                 </div>
                 <div className="text-center">
-                  <p className="text-gray-400 text-xs">必要ペース</p>
+                  <p className="text-gray-400 text-xs">目標達成に必要</p>
                   <p className="text-2xl font-mono font-bold text-gray-300">
                     {paceInfo.requiredPaceKmH !== null
                       ? formatPace(paceInfo.requiredPaceKmH)

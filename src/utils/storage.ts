@@ -5,6 +5,7 @@ export interface AppSettings {
   emergencyPhone: string;
   claudeApiKey: string;
   targetHours: number; // 目標完走時間（時間）
+  raceDate: string;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -12,6 +13,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   emergencyPhone: '',
   claudeApiKey: '',
   targetHours: 26,
+  raceDate: '2026-05-23',
 };
 
 function safeGet(key: string): string | null {

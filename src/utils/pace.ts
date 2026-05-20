@@ -5,8 +5,9 @@ export interface PaceInfo {
   currentPaceKmH: number;
   predictedPaceKmH: number;
   etaToNextCp: Date | null;
-  marginMinutes: number | null;
-  requiredPaceKmH: number | null;
+  marginMinutes: number | null;       // vs cutoff (safety floor — negative = disqualified)
+  targetMarginMinutes: number | null; // vs 26h target (main KPI — negative = behind plan)
+  requiredPaceKmH: number | null;     // pace needed to hit target (with fatigue correction)
   maxRestMinutes: number | null;
 }
 
@@ -61,6 +62,7 @@ export function calcPaceInfo(
   elapsedMin: number | null,
   nextCpKm: number,
   nextCpCutoff: Date,
+  nextCpTargetArrival: Date | null = null,
   now: Date = new Date()
 ): PaceInfo {
   const currentPaceKmH = calcCurrentPace(currentKm, kmNMinAgo, elapsedMin);
@@ -83,12 +85,19 @@ export function calcPaceInfo(
   // else: no pace data yet → leave marginMinutes null so UI shows '--'
 
   // Required pace corrected for fatigue + circadian: walker needs to go faster
-  // now to compensate for the slowdown they'll experience later
-  const timeToDeadline =
-    (nextCpCutoff.getTime() - now.getTime()) / (3600 * 1000);
+  // now to compensate for the slowdown they'll experience later.
+  // Uses target arrival (26h plan) if provided, falls back to cutoff (minimum safety line).
+  const deadline = nextCpTargetArrival ?? nextCpCutoff;
+  const timeToDeadline = (deadline.getTime() - now.getTime()) / (3600 * 1000);
   const requiredPaceKmH =
     timeToDeadline > 0
       ? (remainingKm / timeToDeadline) * ff * circadianFactor()
+      : null;
+
+  // Target margin: positive = ahead of 26h plan, negative = behind plan
+  const targetMarginMinutes: number | null =
+    etaToNextCp !== null && nextCpTargetArrival !== null
+      ? (nextCpTargetArrival.getTime() - etaToNextCp.getTime()) / (60 * 1000)
       : null;
 
   // Max rest time: safe_departure = cutoff - travel_time - 30min buffer
@@ -107,6 +116,7 @@ export function calcPaceInfo(
     predictedPaceKmH,
     etaToNextCp,
     marginMinutes,
+    targetMarginMinutes,
     requiredPaceKmH,
     maxRestMinutes,
   };
