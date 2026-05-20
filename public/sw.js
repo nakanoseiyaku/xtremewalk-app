@@ -1,9 +1,10 @@
 const STATIC_CACHE = 'xwalk-static-v1';
 const WEATHER_CACHE = 'xwalk-weather-v1';
 
+const BASE = self.location.pathname.replace(/\/sw\.js$/, '');
 const STATIC_URLS = [
-  '/',
-  '/index.html',
+  BASE + '/',
+  BASE + '/index.html',
 ];
 
 // Install: precache static assets
