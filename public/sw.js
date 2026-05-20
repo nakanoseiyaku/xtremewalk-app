@@ -1,4 +1,4 @@
-const STATIC_CACHE = 'xwalk-static-v1';
+const STATIC_CACHE = 'xwalk-static-v3';
 const WEATHER_CACHE = 'xwalk-weather-v1';
 
 const BASE = self.location.pathname.replace(/\/sw\.js$/, '');
@@ -53,21 +53,35 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // For same-origin requests: cache-first
-  if (url.origin === self.location.origin) {
+  // /assets/ (hashed filenames): cache-first (content-addressed, safe)
+  if (url.origin === self.location.origin && url.pathname.includes('/assets/')) {
     event.respondWith(
       caches.match(event.request).then((cached) => {
         if (cached) return cached;
         return fetch(event.request).then((response) => {
           if (response.ok) {
             const clone = response.clone();
-            caches.open(STATIC_CACHE).then((cache) => {
-              cache.put(event.request, clone);
-            });
+            caches.open(STATIC_CACHE).then((cache) => cache.put(event.request, clone));
           }
           return response;
         });
       })
+    );
+    return;
+  }
+
+  // index.html and other non-hashed assets: network-first (always get latest)
+  if (url.origin === self.location.origin) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(STATIC_CACHE).then((cache) => cache.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
     );
     return;
   }
