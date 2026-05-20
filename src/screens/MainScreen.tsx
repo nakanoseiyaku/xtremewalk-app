@@ -186,7 +186,7 @@ export function MainScreen({
         </button>
         {showMap && (
           <div className="mt-2">
-            <MapView gps={gps} stores={stores} nightMode={nightMode} />
+            <MapView gps={gps} stores={stores} nightMode={nightMode} nextCpKm={nextCp?.km ?? null} />
           </div>
         )}
       </div>
