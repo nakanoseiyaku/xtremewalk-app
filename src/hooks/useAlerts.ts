@@ -36,6 +36,8 @@ interface AlertFlags {
   wall75Warned: boolean;
   nutritionLast: number;
   wall28NutritionWarned: boolean;
+  stretchLast: number;
+  stretchIndex: number;
 }
 
 function vibrate(pattern: number | number[]) {
@@ -80,6 +82,8 @@ export function useAlerts(input: AlertInput) {
     wall75Warned: false,
     nutritionLast: Date.now() - 30 * 60 * 1000, // first alert fires at 30 min after start
     wall28NutritionWarned: false,
+    stretchLast: Date.now() - 60 * 60 * 1000, // first alert fires at 60 min after start
+    stretchIndex: 0,
   });
 
   const [nutritionDue, setNutritionDue] = useState(false);
@@ -205,6 +209,23 @@ export function useAlerts(input: AlertInput) {
       );
       setNutritionDueRef.current(true);
       setTimeout(() => setNutritionDueRef.current(false), 5 * 60 * 1000);
+    }
+
+    // 90-min stretch reminder — rotates through 6 body-area cues
+    const STRETCH_MESSAGES = [
+      'ふくらはぎと足首のストレッチです。かかとを大きく踏み込んで歩きましょう。足首をゆっくり回すと血流が改善します。',
+      '肩と首のストレッチをしましょう。肩を後ろに大きく5回まわしてください。首をゆっくり左右に傾けて筋肉をほぐしましょう。',
+      '股関節と腸腰筋のストレッチです。歩幅を意識的に広げて股関節を大きく使いましょう。腰に手を当てて背中をまっすぐ伸ばしてください。',
+      'ハムストリングと膝のケアです。次のベンチや段差で片足を伸ばして前屈してください。膝の曲げ伸ばしを5回やっておきましょう。',
+      '全身リセットの時間です。立ち止まって両腕を上に伸ばして深呼吸を3回してください。背中を丸めて猫背ストレッチ。上半身の張りが取れます。',
+      '足裏とアキレス腱のケアです。壁や手すりに手をついてアキレス腱を伸ばしてください。足裏を指で押して痛いところがないか確認しましょう。',
+    ];
+    const STRETCH_INTERVAL_MS = 90 * 60 * 1000;
+    if (now - flags.stretchLast >= STRETCH_INTERVAL_MS) {
+      flags.stretchLast = now;
+      const msg = STRETCH_MESSAGES[flags.stretchIndex % STRETCH_MESSAGES.length];
+      flags.stretchIndex += 1;
+      speakAndWake(`ストレッチの時間です。${msg}`);
     }
 
     // ---- KM-crossing detection ----
