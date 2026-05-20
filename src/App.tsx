@@ -216,7 +216,7 @@ export default function App() {
   const weatherCondition = getCurrentWeather(weatherData);
 
   // Alerts
-  useAlerts({
+  const { nutritionDue } = useAlerts({
     currentKm: gps.currentKm,
     marginMinutes: paceInfo.marginMinutes,
     batteryLevel: battery.level,
@@ -272,6 +272,7 @@ export default function App() {
       onRetire={() => transitionTo('retired')}
       onSetup={() => transitionTo('setup')}
       projections={projections}
+      nutritionDue={nutritionDue}
     />
     </>
   );

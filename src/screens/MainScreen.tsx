@@ -41,6 +41,7 @@ interface MainScreenProps {
   onRetire: () => void;
   onSetup: () => void;
   projections: CPProjection[];
+  nutritionDue?: boolean;
 }
 
 type SubScreen = 'main' | 'ai_chat' | 'cp_arrival';
@@ -59,6 +60,7 @@ export function MainScreen({
   onRetire,
   onSetup,
   projections,
+  nutritionDue = false,
 }: MainScreenProps) {
   const [subScreen, setSubScreen] = useState<SubScreen>('main');
   const [showSOS, setShowSOS] = useState(false);
@@ -210,6 +212,13 @@ export function MainScreen({
 
       {/* Main content */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3 pb-4">
+
+        {/* Nutrition reminder badge — shows for 5 min after TTS fires */}
+        {nutritionDue && (
+          <div className="bg-yellow-500 text-black text-sm font-bold px-3 py-2 rounded-xl text-center animate-pulse">
+            🍙 補給タイム！ おにぎり・羊羹・スポドリ
+          </div>
+        )}
 
         {/* ===== MAIN KPI SECTION (40% screen height) ===== */}
         <div

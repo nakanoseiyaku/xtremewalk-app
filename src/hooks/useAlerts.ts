@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useTTS } from './useTTS';
 import type { GPSStatus } from './useGPS';
 import type { WeatherCondition } from '../utils/weather';
@@ -32,6 +32,8 @@ interface AlertFlags {
   prevKm: number | null;
   wall45Warned: boolean;
   wall75Warned: boolean;
+  nutritionLast: number;
+  wall28NutritionWarned: boolean;
 }
 
 function vibrate(pattern: number | number[]) {
@@ -73,7 +75,13 @@ export function useAlerts(input: AlertInput) {
     prevKm: null,
     wall45Warned: false,
     wall75Warned: false,
+    nutritionLast: Date.now() - 30 * 60 * 1000, // first alert fires at 30 min after start
+    wall28NutritionWarned: false,
   });
+
+  const [nutritionDue, setNutritionDue] = useState(false);
+  const setNutritionDueRef = useRef(setNutritionDue);
+  setNutritionDueRef.current = setNutritionDue;
 
   const handleAlerts = useCallback(() => {
     const input = inputRef.current;
@@ -171,6 +179,23 @@ export function useAlerts(input: AlertInput) {
       speak(`水分補給の時間です。コップ一杯の水を飲みましょう。${storeMsg}`);
     }
 
+    // 45-min nutrition reminder — bonking prevention (solid food takes 30 min to absorb)
+    const NUTRITION_INTERVAL_MS = 45 * 60 * 1000;
+    if (now - flags.nutritionLast >= NUTRITION_INTERVAL_MS) {
+      flags.nutritionLast = now;
+      const nextStore = getNextStores(input.stores, km, 1)[0];
+      const storeText = nextStore
+        ? `次のコンビニまで${(nextStore.km_pos - km).toFixed(1)}キロです。`
+        : '';
+      speak(
+        `エネルギー補給のタイミングです。おにぎりやパン、羊羹など炭水化物を今すぐ食べてください。` +
+        `固形食は食べてから30分後にエネルギーになるので、空腹を感じる前に食べることが重要です。` +
+        storeText
+      );
+      setNutritionDueRef.current(true);
+      setTimeout(() => setNutritionDueRef.current(false), 5 * 60 * 1000);
+    }
+
     // ---- KM-crossing detection ----
     // prevKm=null means first call; record km and skip to avoid replaying past milestones
     const prevKm = flags.prevKm;
@@ -197,11 +222,26 @@ export function useAlerts(input: AlertInput) {
       );
     }
 
-    // km 14-18: no-store zone warning (action: resupply now)
+    // km 14-18: no-store zone warning — specific shopping list to prevent bonking
     if (prevKm < 14 && km >= 14 && !flags.km15Warned) {
       flags.km15Warned = true;
       speak(
-        '3キロ先から18キロまでコンビニなし区間です。今すぐ水分と食料を補給してください。'
+        'この先10キロ以上コンビニなし区間に入ります。' +
+        '今すぐコンビニに立ち寄ってください。' +
+        '推奨購入品：おにぎり2個、スポーツドリンク、塩タブレットまたは梅干し。' +
+        '次の補給まで2時間以上かかる可能性があります。'
+      );
+    }
+
+    // km 28: glycogen wall pre-warning — eat NOW so it absorbs by km 30-32
+    if (prevKm < 28 && km >= 28 && !flags.wall28NutritionWarned) {
+      flags.wall28NutritionWarned = true;
+      vibrate([200, 100, 200, 100, 200]);
+      speak(
+        `30キロ手前です。体内のグリコーゲンが残り少なくなっています。` +
+        `今すぐおにぎりか羊羹を食べてください。` +
+        `30分後にエネルギーになり、30キロの壁を越える頃に効果が出ます。` +
+        `今食べないとガス欠、シャリバテになります。`
       );
     }
 
@@ -246,4 +286,6 @@ export function useAlerts(input: AlertInput) {
     handleAlerts();
     return () => clearInterval(interval);
   }, [input.active, handleAlerts]);
+
+  return { nutritionDue };
 }
