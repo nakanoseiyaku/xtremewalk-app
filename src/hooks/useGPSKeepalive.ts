@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
 
 // Keeps an AudioContext running while the race is active.
 // Chrome treats tabs with an active AudioContext as "audio-producing" and
@@ -9,6 +10,10 @@ export function useGPSKeepalive(active: boolean) {
   const ctxRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
+    // Native builds keep GPS alive via a foreground service — the silent
+    // AudioContext anti-throttling trick is a web-only workaround.
+    if (Capacitor.isNativePlatform()) return;
+
     if (!active) {
       ctxRef.current?.close();
       ctxRef.current = null;

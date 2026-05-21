@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { findNearestKm, computeBearing } from '../utils/gps';
 import type { KmPoint, LatLng } from '../utils/gps';
+import { startLocationWatch } from '../services/locationProvider';
+import type { LocationFix, LocationError, LocationWatch } from '../services/locationProvider';
 
 export type GPSStatus = 'inactive' | 'active' | 'degraded' | 'lost' | 'permission_denied';
 
@@ -71,8 +74,8 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
   }, [isRaceActive]);
 
   const handlePosition = useCallback(
-    (pos: GeolocationPosition) => {
-      const { latitude, longitude, accuracy } = pos.coords;
+    (fix: LocationFix) => {
+      const { lat: latitude, lng: longitude, accuracy } = fix;
 
       // Display sanity check only: drop non-finite or absurd fixes (>2km accuracy).
       // This is NOT the km-tracking gate — degraded indoor fixes still pass through
@@ -94,7 +97,7 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
         bearing = computeBearing(prevPositionRef.current, currentPos);
       }
 
-      const nativeSpeed = pos.coords.speed;
+      const nativeSpeed = fix.speed;
 
       // km-tracking gates — these gate the km computation only, NOT the displayed
       // position. A stationary or low-accuracy reading still updates lat/lng.
@@ -170,19 +173,18 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
         speed: nativeSpeed,
         bearing,
         status: accuracy <= 20 ? 'active' : 'degraded',
-        lastUpdate: new Date(pos.timestamp),
+        lastUpdate: new Date(fix.timestamp),
         kmIndex: prevKmIndexRef.current,
       });
     },
     [isRaceActive, kmPoints]  // isRaceActive added to fix stale-closure bug
   );
 
-  const handleError = useCallback((e: GeolocationPositionError) => {
-    if (e.code === e.PERMISSION_DENIED) {
-      setState((prev) => ({ ...prev, status: 'permission_denied' }));
-    } else {
-      setState((prev) => ({ ...prev, status: 'degraded' }));
-    }
+  const handleError = useCallback((error: LocationError) => {
+    setState((prev) => ({
+      ...prev,
+      status: error === 'denied' ? 'permission_denied' : 'degraded',
+    }));
   }, []);
 
   // When external mock km changes (from debug panel slider), update state directly
@@ -194,23 +196,24 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
   useEffect(() => {
     // If mock mode, skip real GPS
     if (initialMockKm !== null) return;
-    if (!navigator.geolocation) return;
+    // Native: the background-geolocation foreground service shows a persistent
+    // notification, so only run it during the race. Web watches from mount as before.
+    if (Capacitor.isNativePlatform() && !isRaceActive) return;
 
-    const watchId = navigator.geolocation.watchPosition(
-      handlePosition,
-      handleError,
-      {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 3000,
-      }
-    );
+    let watch: LocationWatch | null = null;
+    let cancelled = false;
+
+    void startLocationWatch(handlePosition, handleError).then((w) => {
+      if (cancelled) w.stop();
+      else watch = w;
+    });
 
     return () => {
-      navigator.geolocation.clearWatch(watchId);
+      cancelled = true;
+      watch?.stop();
       if (lostTimerRef.current) clearTimeout(lostTimerRef.current);
     };
-  }, [handlePosition, handleError]);
+  }, [handlePosition, handleError, initialMockKm, isRaceActive]);
 
   return state;
 }
