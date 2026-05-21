@@ -31,7 +31,12 @@ function getMockKm(): number | null {
   return isNaN(n) ? null : n;
 }
 
-export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRaceActive = false): GPSState {
+export function useGPS(
+  kmPoints: KmPoint[],
+  externalMockKm?: number | null,
+  isRaceActive = false,
+  watchEnabled = false,
+): GPSState {
   // Mock km: prefer external (from debug panel) → URL param → null
   const initialMockKm = externalMockKm ?? getMockKm();
 
@@ -47,6 +52,11 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
     lastUpdate: initialMockKm !== null ? new Date() : null,
     kmIndex: null,
   });
+
+  // Latest isRaceActive, read inside the GPS callback without making it a
+  // dependency — keeps handlePosition stable so the watch is not torn down and
+  // GPS is not cold-restarted when the race begins. Synced in the effect below.
+  const isRaceActiveRef = useRef(isRaceActive);
 
   const prevPositionRef = useRef<LatLng | null>(null);
   const prevKmIndexRef = useRef<number | null>(null);
@@ -75,6 +85,7 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
   // When race becomes active, reset km tracking so GPS can't teleport from home to
   // wherever the route happens to pass near the user's location.
   useEffect(() => {
+    isRaceActiveRef.current = isRaceActive;
     if (isRaceActive) {
       lastAcceptedTimeRef.current = Date.now();
       prevKmRef.current = 0;
@@ -122,7 +133,7 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
       // The first fix only needs good accuracy (movement not required) so the
       // start position is adopted immediately.
       let smoothedKm = prevKmRef.current;
-      if (isRaceActive && (kmTrackable || (!hasInitialFixRef.current && accuracyOk))) {
+      if (isRaceActiveRef.current && (kmTrackable || (!hasInitialFixRef.current && accuracyOk))) {
         const nearest = findNearestKm(currentPos, kmPoints, prevKmIndexRef.current);
         const nowMs = Date.now();
 
@@ -214,7 +225,7 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
         kmIndex: prevKmIndexRef.current,
       });
     },
-    [isRaceActive, kmPoints]  // isRaceActive added to fix stale-closure bug
+    [kmPoints]
   );
 
   const handleError = useCallback((error: LocationError) => {
@@ -233,9 +244,9 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
   useEffect(() => {
     // If mock mode, skip real GPS
     if (initialMockKm !== null) return;
-    // Native: the background-geolocation foreground service shows a persistent
-    // notification, so only run it during the race. Web watches from mount as before.
-    if (Capacitor.isNativePlatform() && !isRaceActive) return;
+    // Native: start GPS from the pre-start screen onward (watchEnabled) so it is
+    // already warm with a fix by the time the race begins. Web watches from mount.
+    if (Capacitor.isNativePlatform() && !watchEnabled) return;
 
     let watch: LocationWatch | null = null;
     let cancelled = false;
@@ -250,7 +261,7 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
       watch?.stop();
       if (lostTimerRef.current) clearTimeout(lostTimerRef.current);
     };
-  }, [handlePosition, handleError, initialMockKm, isRaceActive]);
+  }, [handlePosition, handleError, initialMockKm, watchEnabled]);
 
   return state;
 }

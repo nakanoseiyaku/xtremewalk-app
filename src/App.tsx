@@ -170,7 +170,14 @@ export default function App() {
   const lastWeatherPosRef = useRef<{ lat: number; lng: number } | null>(null);
 
   // Hooks
-  const gps = useGPS(kmPointsData, mockKm, appState === 'active');
+  // GPS watch runs from the pre-start screen so it is warm before the race;
+  // km tracking still only counts once the race is active.
+  const gps = useGPS(
+    kmPointsData,
+    mockKm,
+    appState === 'active',
+    appState === 'pre_start' || appState === 'active',
+  );
   useGPSKeepalive(appState === 'active');
   const wakeLock = useWakeLock();
   const battery = useBattery();

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { GPSState } from '../hooks/useGPS';
@@ -65,6 +65,7 @@ export function MapView({ gps, stores, nightMode, nextCpKm }: MapViewProps) {
   const nextCpMarkerRef = useRef<L.Marker | null>(null);
   const followRef = useRef(true);
   const nextCpLatLngRef = useRef<[number, number] | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
 
   // Initialize map once
   useEffect(() => {
@@ -259,6 +260,10 @@ export function MapView({ gps, stores, nightMode, nextCpKm }: MapViewProps) {
     if (mapRef.current && gps.lat !== null && gps.lng !== null) {
       mapRef.current.setView([gps.lat, gps.lng], 16, { animate: true });
       followRef.current = true;
+    } else {
+      // No GPS fix yet — tell the user instead of silently doing nothing.
+      setHint('現在地を取得中です…');
+      window.setTimeout(() => setHint(null), 2500);
     }
   };
 
@@ -276,6 +281,12 @@ export function MapView({ gps, stores, nightMode, nextCpKm }: MapViewProps) {
   return (
     <div className="relative w-full rounded-2xl overflow-hidden" style={{ height: '52vw', maxHeight: '280px', minHeight: '180px' }}>
       <div ref={containerRef} className="w-full h-full" />
+
+      {hint && (
+        <div className="absolute top-3 left-3 z-[1000] bg-gray-900/90 text-white text-xs font-bold px-3 py-2 rounded-xl border border-gray-700">
+          {hint}
+        </div>
+      )}
 
       {/* Buttons */}
       <div className="absolute bottom-3 right-3 z-[1000] flex gap-2">
