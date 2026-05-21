@@ -62,6 +62,10 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
   // Initialized to 0 (= "never accepted"). Reset to Date.now() when race becomes active.
   const lastAcceptedTimeRef = useRef<number>(0);
 
+  // False until the first trustworthy fix of a race has been adopted as the
+  // start position. The forward-jump guard is bypassed for that first fix.
+  const hasInitialFixRef = useRef<boolean>(false);
+
   // When race becomes active, reset km tracking so GPS can't teleport from home to
   // wherever the route happens to pass near the user's location.
   useEffect(() => {
@@ -70,6 +74,7 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
       prevKmRef.current = 0;
       kmWindowRef.current = [];
       prevKmIndexRef.current = null;
+      hasInitialFixRef.current = false;
     }
   }, [isRaceActive]);
 
@@ -102,45 +107,60 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
       // km-tracking gates — these gate the km computation only, NOT the displayed
       // position. A stationary or low-accuracy reading still updates lat/lng.
       const isStationary = nativeSpeed !== null && nativeSpeed < 0.5;
-      const kmTrackable = accuracy <= 50 && !isStationary;
+      const accuracyOk = accuracy <= 50;
+      const kmTrackable = accuracyOk && !isStationary;
 
       // Only compute km position when the race is active and the reading is
       // trustworthy for km tracking. Otherwise smoothedKm stays at prevKmRef.
+      // The first fix only needs good accuracy (movement not required) so the
+      // start position is adopted immediately.
       let smoothedKm = prevKmRef.current;
-      if (isRaceActive && kmTrackable) {
+      if (isRaceActive && (kmTrackable || (!hasInitialFixRef.current && accuracyOk))) {
         const nearest = findNearestKm(currentPos, kmPoints, prevKmIndexRef.current);
-
-        // Forward-jump speed limit: the km reading cannot advance more than
-        // (time elapsed × 10 km/h) in one step, with a 2 km minimum tolerance
-        // for GPS inaccuracy near the course start.
-        // This prevents a user at home (e.g. 76 km on the route) from instantly
-        // jumping to 76 km when the app starts.
         const nowMs = Date.now();
-        const elapsedHours =
-          lastAcceptedTimeRef.current > 0
-            ? (nowMs - lastAcceptedTimeRef.current) / 3600000
-            : 0;
-        const maxForwardKm = Math.max(2.0, elapsedHours * 10);
 
-        const forwardJump = nearest.km > prevKmRef.current + maxForwardKm;
-        // km rollback prevention: if new_km < prev_km - 0.5
-        const rollback = nearest.km < prevKmRef.current - 0.5;
-
-        // Forward-jump / rollback: skip the km update only — do NOT drop the
-        // position. smoothedKm remains prevKmRef.current.
-        if (!forwardJump && !rollback) {
-          // Accept this reading
+        if (!hasInitialFixRef.current) {
+          // First trustworthy fix of the race: adopt the runner's actual
+          // position on the course as the starting km. Without this the
+          // forward-jump guard below pins currentKm at 0 forever whenever the
+          // start point isn't course km 0 (e.g. test walks, or starting the
+          // race anywhere other than the official start line).
+          hasInitialFixRef.current = true;
           lastAcceptedTimeRef.current = nowMs;
-
-          // Smoothing: average of last 3 valid km readings
-          kmWindowRef.current.push(nearest.km);
-          if (kmWindowRef.current.length > 3) kmWindowRef.current.shift();
-          smoothedKm =
-            kmWindowRef.current.reduce((a, b) => a + b, 0) /
-            kmWindowRef.current.length;
-
+          kmWindowRef.current = [nearest.km];
+          smoothedKm = nearest.km;
           prevKmIndexRef.current = nearest.index;
-          prevKmRef.current = smoothedKm;
+          prevKmRef.current = nearest.km;
+        } else {
+          // Forward-jump speed limit: the km reading cannot advance more than
+          // (time elapsed × 10 km/h) in one step, with a 2 km minimum tolerance.
+          // This prevents GPS noise from teleporting the runner mid-race.
+          const elapsedHours =
+            lastAcceptedTimeRef.current > 0
+              ? (nowMs - lastAcceptedTimeRef.current) / 3600000
+              : 0;
+          const maxForwardKm = Math.max(2.0, elapsedHours * 10);
+
+          const forwardJump = nearest.km > prevKmRef.current + maxForwardKm;
+          // km rollback prevention: if new_km < prev_km - 0.5
+          const rollback = nearest.km < prevKmRef.current - 0.5;
+
+          // Forward-jump / rollback: skip the km update only — do NOT drop the
+          // position. smoothedKm remains prevKmRef.current.
+          if (!forwardJump && !rollback) {
+            // Accept this reading
+            lastAcceptedTimeRef.current = nowMs;
+
+            // Smoothing: average of last 3 valid km readings
+            kmWindowRef.current.push(nearest.km);
+            if (kmWindowRef.current.length > 3) kmWindowRef.current.shift();
+            smoothedKm =
+              kmWindowRef.current.reduce((a, b) => a + b, 0) /
+              kmWindowRef.current.length;
+
+            prevKmIndexRef.current = nearest.index;
+            prevKmRef.current = smoothedKm;
+          }
         }
       }
 
