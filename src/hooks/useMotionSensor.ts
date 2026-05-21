@@ -14,8 +14,11 @@ const DEBOUNCE_MS = 15_000;
 const SAMPLE_INTERVAL_MS = 5_000;
 const MAX_BUFFER = 300; // ~5s at 60Hz
 
-// Step detection
-const STEP_THRESHOLD = 11.8; // m/s² — above this on a rising edge = one step
+// Step detection — gravity-subtracted dynamic acceleration with hysteresis
+const GRAVITY_LPF_ALPHA = 0.1; // slow LPF estimates the gravity baseline (~9.8 m/s²)
+const STEP_EMA_ALPHA = 0.6; // light smoothing on dynamic accel — preserves step peaks
+const DYNAMIC_STEP_THRESHOLD = 1.1; // m/s² of dynamic accel — rising edge = one step
+const DYNAMIC_STEP_RESET = 0.3; // hysteresis: dynamic must fall below this to arm the next step
 const MIN_STEP_INTERVAL_MS = 300; // min 300ms between steps (max ~200 steps/min)
 const CADENCE_WINDOW_MS = 60_000; // rolling 60s window for cadence
 
@@ -33,8 +36,9 @@ export function useMotionSensor(): MotionState {
   const committedStateRef = useRef<boolean | null>(null);
 
   // Step detection state
-  const lastMagRef = useRef<number>(0);
-  const smoothedMagRef = useRef<number>(0);
+  const gravityRef = useRef<number>(9.8); // running gravity-baseline estimate
+  const smoothedDynRef = useRef<number>(0); // smoothed dynamic (gravity-removed) accel
+  const stepArmedRef = useRef<boolean>(true); // hysteresis: ready to count the next step
   const lastStepTimeRef = useRef<number>(0);
   const stepTimestampsRef = useRef<number[]>([]);
   const stepCountRef = useRef<number>(0);
@@ -50,16 +54,27 @@ export function useMotionSensor(): MotionState {
 
       const mag = Math.sqrt((a.x ?? 0) ** 2 + (a.y ?? 0) ** 2 + (a.z ?? 0) ** 2);
 
-      // Exponential moving average for step detection (α=0.3 → smooth but responsive)
-      smoothedMagRef.current = 0.7 * smoothedMagRef.current + 0.3 * mag;
+      // Slow low-pass estimates the gravity baseline (~9.8 m/s²). Subtracting it
+      // leaves only the dynamic acceleration produced by each footfall.
+      gravityRef.current =
+        (1 - GRAVITY_LPF_ALPHA) * gravityRef.current + GRAVITY_LPF_ALPHA * mag;
+      const dynamic = mag - gravityRef.current;
 
-      // Step detection: rising edge crosses STEP_THRESHOLD
+      // Light EMA: just enough to suppress sensor noise without flattening the
+      // step peaks (the old α=0.3 over-smoothed them below the threshold).
+      smoothedDynRef.current =
+        (1 - STEP_EMA_ALPHA) * smoothedDynRef.current + STEP_EMA_ALPHA * dynamic;
+
+      // Step detection with hysteresis: count once when the dynamic signal rises
+      // past the threshold, then disarm until it falls back near baseline — this
+      // prevents a single footfall from registering as several steps.
       const now = Date.now();
       if (
-        lastMagRef.current < STEP_THRESHOLD &&
-        smoothedMagRef.current >= STEP_THRESHOLD &&
+        stepArmedRef.current &&
+        smoothedDynRef.current >= DYNAMIC_STEP_THRESHOLD &&
         now - lastStepTimeRef.current >= MIN_STEP_INTERVAL_MS
       ) {
+        stepArmedRef.current = false;
         lastStepTimeRef.current = now;
         stepCountRef.current += 1;
         stepTimestampsRef.current.push(now);
@@ -67,8 +82,12 @@ export function useMotionSensor(): MotionState {
         stepTimestampsRef.current = stepTimestampsRef.current.filter(
           (t) => now - t <= CADENCE_WINDOW_MS
         );
+      } else if (
+        !stepArmedRef.current &&
+        smoothedDynRef.current <= DYNAMIC_STEP_RESET
+      ) {
+        stepArmedRef.current = true;
       }
-      lastMagRef.current = smoothedMagRef.current;
 
       // Buffer for walking/stopped classification
       bufferRef.current.push(mag);
