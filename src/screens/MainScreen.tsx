@@ -325,7 +325,13 @@ export function MainScreen({
       </div>
 
       {/* Main content */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3 pb-4">
+      <div
+        className="flex-1 overflow-y-auto p-3 space-y-3 pb-4"
+        // Inset above the Android navigation bar (edge-to-edge).
+        style={{
+          paddingBottom: 'calc(1rem + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))',
+        }}
+      >
 
         {/* Nutrition reminder badge — shows for 5 min after TTS fires */}
         {nutritionDue && (

@@ -82,7 +82,14 @@ export function TopBar({ currentKm, battery, wakeLockStatus, gpsStatus, nightMod
   const text = nightMode ? 'text-white' : 'text-gray-100';
 
   return (
-    <div className={`${bg} ${text} border-b px-3 py-2 flex items-center justify-between sticky top-0 z-10`}>
+    <div
+      className={`${bg} ${text} border-b px-3 pb-2 flex items-center justify-between sticky top-0 z-10`}
+      // Inset below the Android status bar (edge-to-edge). Capacitor's SystemBars
+      // injects --safe-area-inset-*; env()/0px cover web and older WebViews.
+      style={{
+        paddingTop: 'calc(0.5rem + var(--safe-area-inset-top, env(safe-area-inset-top, 0px)))',
+      }}
+    >
       {/* Current km */}
       <div className="flex items-center gap-2">
         <span className="text-2xl font-bold text-amber-400 font-mono">
