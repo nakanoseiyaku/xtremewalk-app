@@ -454,25 +454,32 @@ export function MainScreen({
                 </div>
               </div>
 
-              {/* Cadence / Step count */}
-              <div className="grid grid-cols-2 gap-3 mt-3 border-t border-gray-700 pt-3">
+              {/* Cadence / Walked distance / Step count */}
+              <div className="grid grid-cols-3 gap-2 mt-3 border-t border-gray-700 pt-3">
                 <div className="text-center">
                   <p className="text-gray-400 text-xs">ケイデンス</p>
-                  <p className={`text-2xl font-mono font-bold ${
+                  <p className={`text-xl font-mono font-bold ${
                     cadence === null ? 'text-gray-600' :
                     cadence >= 100 ? 'text-green-400' :
                     cadence >= 85  ? 'text-yellow-400' :
                     'text-red-400'
                   }`}>
                     {cadence !== null ? `${cadence}` : '--'}
-                    <span className="text-sm font-normal text-gray-500 ml-1">歩/分</span>
+                    <span className="text-xs font-normal text-gray-500 ml-1">歩/分</span>
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-gray-400 text-xs">歩行距離</p>
+                  <p className="text-xl font-mono font-bold text-gray-300">
+                    {gps.walkedKm.toFixed(2)}
+                    <span className="text-xs font-normal text-gray-500 ml-1">km</span>
                   </p>
                 </div>
                 <div className="text-center">
                   <p className="text-gray-400 text-xs">総歩数</p>
-                  <p className="text-2xl font-mono font-bold text-gray-300">
+                  <p className="text-xl font-mono font-bold text-gray-300">
                     {stepCount > 0 ? stepCount.toLocaleString() : '--'}
-                    <span className="text-sm font-normal text-gray-500 ml-1">歩</span>
+                    <span className="text-xs font-normal text-gray-500 ml-1">歩</span>
                   </p>
                 </div>
               </div>

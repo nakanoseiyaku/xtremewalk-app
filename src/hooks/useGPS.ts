@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { findNearestKm, computeBearing } from '../utils/gps';
+import { findNearestKm, computeBearing, haversineDistance } from '../utils/gps';
 import type { KmPoint, LatLng } from '../utils/gps';
 import { startLocationWatch } from '../services/locationProvider';
 import type { LocationFix, LocationError, LocationWatch } from '../services/locationProvider';
@@ -12,6 +12,7 @@ export interface GPSState {
   lng: number | null;
   accuracy: number | null;
   currentKm: number;
+  walkedKm: number; // cumulative GPS distance actually walked this race
   speed: number | null; // m/s
   bearing: number | null;
   status: GPSStatus;
@@ -39,6 +40,7 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
     lng: null,
     accuracy: null,
     currentKm: initialMockKm ?? 0,
+    walkedKm: 0,
     speed: null,
     bearing: null,
     status: initialMockKm !== null ? 'active' : 'inactive',
@@ -66,6 +68,10 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
   // start position. The forward-jump guard is bypassed for that first fix.
   const hasInitialFixRef = useRef<boolean>(false);
 
+  // Cumulative distance actually walked this race, in metres (sum of GPS
+  // segments). Independent of course position — advances anywhere.
+  const walkedMetersRef = useRef<number>(0);
+
   // When race becomes active, reset km tracking so GPS can't teleport from home to
   // wherever the route happens to pass near the user's location.
   useEffect(() => {
@@ -75,6 +81,7 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
       kmWindowRef.current = [];
       prevKmIndexRef.current = null;
       hasInitialFixRef.current = false;
+      walkedMetersRef.current = 0;
     }
   }, [isRaceActive]);
 
@@ -164,6 +171,15 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
         }
       }
 
+      // Cumulative distance actually walked — sums GPS segments so it advances
+      // anywhere, even off the course. Uses the same trust gate as km tracking.
+      if (prevPositionRef.current && kmTrackable) {
+        const segMeters = haversineDistance(prevPositionRef.current, currentPos);
+        if (segMeters >= 2 && segMeters <= 250) {
+          walkedMetersRef.current += segMeters;
+        }
+      }
+
       prevPositionRef.current = currentPos;
 
       // Track km-5min-ago
@@ -190,6 +206,7 @@ export function useGPS(kmPoints: KmPoint[], externalMockKm?: number | null, isRa
         lng: longitude,
         accuracy,
         currentKm: smoothedKm,
+        walkedKm: walkedMetersRef.current / 1000,
         speed: nativeSpeed,
         bearing,
         status: accuracy <= 20 ? 'active' : 'degraded',
