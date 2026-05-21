@@ -12,6 +12,12 @@ const config: CapacitorConfig = {
   server: {
     androidScheme: 'https',
   },
+  plugins: {
+    CapacitorUpdater: {
+      // Manual mode: the app checks GitHub itself and applies web bundles.
+      autoUpdate: false,
+    },
+  },
 };
 
 export default config;

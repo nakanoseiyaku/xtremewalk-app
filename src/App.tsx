@@ -17,6 +17,7 @@ import { useScreenSleep } from './hooks/useScreenSleep';
 import { useMotionSensor } from './hooks/useMotionSensor';
 import { useGPSKeepalive } from './hooks/useGPSKeepalive';
 import { resetStepBaseline } from './services/stepProvider';
+import { initOtaUpdates } from './services/otaUpdater';
 import { fetchWeather, getCurrentWeather } from './utils/weather';
 import { calcPaceInfo, calcFullProjection } from './utils/pace';
 import type { PaceInfo, CPProjection } from './utils/pace';
@@ -188,6 +189,11 @@ const screenSleep = useScreenSleep(battery.charging);
   // Fetch weather on mount (initial, before GPS is available)
   useEffect(() => {
     fetchWeather().then(setWeatherData);
+  }, []);
+
+  // Check GitHub for over-the-air web updates (native only)
+  useEffect(() => {
+    void initOtaUpdates();
   }, []);
 
   // GPS-following weather: re-fetch every 2 km of movement

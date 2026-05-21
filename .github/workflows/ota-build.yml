@@ -1,0 +1,52 @@
+name: Build OTA bundle
+
+# On every push to the dev branch, build the web bundle and publish it as a
+# GitHub Release asset (tag "ota"). The installed app fetches version.json from
+# this release and applies the new bundle automatically — no APK reinstall.
+
+on:
+  push:
+    branches:
+      - claude/fix-step-counter-distance-OmTXH
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ota-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web bundle
+        run: npm run build:native
+
+      - name: Package bundle
+        run: |
+          VERSION=$(find dist -type f -exec sha256sum {} \; | sort | sha256sum | cut -c1-12)
+          (cd dist && zip -qr ../bundle.zip .)
+          printf '{"version":"%s","url":"https://github.com/%s/releases/download/ota/bundle.zip"}\n' \
+            "$VERSION" "$GITHUB_REPOSITORY" > version.json
+          echo "OTA bundle version: $VERSION"
+
+      - name: Publish OTA release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create ota --title "OTA web bundle" \
+            --notes "Auto-built web bundle for in-app updates" 2>/dev/null || true
+          gh release upload ota bundle.zip version.json --clobber
