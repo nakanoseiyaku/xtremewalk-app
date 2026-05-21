@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { SetupScreen } from './screens/SetupScreen';
 import { MainScreen } from './screens/MainScreen';
 import { useGPS } from './hooks/useGPS';
@@ -11,6 +12,7 @@ import { getAppState, saveAppState, getSettings, savePaceHistory, loadPaceHistor
 import type { CPVisit } from './utils/storage';
 import { useTTS } from './hooks/useTTS';
 import { MockPanel, isDebugMode, getMockKm } from './components/MockPanel';
+import { PermissionGate } from './components/PermissionGate';
 import { useScreenSleep } from './hooks/useScreenSleep';
 import { useMotionSensor } from './hooks/useMotionSensor';
 import { useGPSKeepalive } from './hooks/useGPSKeepalive';
@@ -127,6 +129,10 @@ export default function App() {
   const [nightMode, setNightMode] = useState(isNightMode);
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [debugMode] = useState(isDebugMode);
+  // Native only: show the permission priming screen once before the OS dialogs.
+  const [permissionPrimed, setPermissionPrimed] = useState<boolean>(
+    () => !Capacitor.isNativePlatform() || localStorage.getItem('xwalk_perm_primed') === '1',
+  );
   const [musicMode, setMusicMode] = useState(getMusicMode);
   const toggleMusicMode = () => {
     setMusicMode((prev) => {
@@ -337,6 +343,21 @@ const screenSleep = useScreenSleep(battery.charging);
       transitionTo('goal');
     }
   }, [gps.currentKm, appState]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!permissionPrimed) {
+    return (
+      <PermissionGate
+        onAcknowledge={() => {
+          try {
+            localStorage.setItem('xwalk_perm_primed', '1');
+          } catch {
+            // ignore storage failure — show again next launch at worst
+          }
+          setPermissionPrimed(true);
+        }}
+      />
+    );
+  }
 
   if (appState === 'setup') {
     return <SetupScreen onComplete={() => transitionTo('pre_start')} />;
