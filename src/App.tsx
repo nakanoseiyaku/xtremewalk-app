@@ -13,6 +13,7 @@ import { useTTS } from './hooks/useTTS';
 import { MockPanel, isDebugMode, getMockKm } from './components/MockPanel';
 import { useScreenSleep } from './hooks/useScreenSleep';
 import { useMotionSensor } from './hooks/useMotionSensor';
+import { useGPSKeepalive } from './hooks/useGPSKeepalive';
 import { fetchWeather, getCurrentWeather } from './utils/weather';
 import { calcPaceInfo, calcFullProjection } from './utils/pace';
 import type { PaceInfo, CPProjection } from './utils/pace';
@@ -162,11 +163,12 @@ export default function App() {
 
   // Hooks
   const gps = useGPS(kmPointsData, mockKm, appState === 'active');
+  useGPSKeepalive(appState === 'active');
   const wakeLock = useWakeLock();
   const battery = useBattery();
 const screenSleep = useScreenSleep(battery.charging);
   const motion = useMotionSensor();
-  const { speak } = useTTS();
+  useTTS();
 
   // Update night mode every minute
   useEffect(() => {
@@ -333,18 +335,6 @@ const screenSleep = useScreenSleep(battery.charging);
       transitionTo('goal');
     }
   }, [gps.currentKm, appState]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Background GPS warning: Android Chrome stops GPS when tab is hidden
-  useEffect(() => {
-    if (appState !== 'active') return;
-    const handleVisibility = () => {
-      if (document.hidden) {
-        speak('画面が切り替わりました。GPSが一時停止します。アプリに戻ってください。');
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [appState, speak]);
 
   if (appState === 'setup') {
     return <SetupScreen onComplete={() => transitionTo('pre_start')} />;
