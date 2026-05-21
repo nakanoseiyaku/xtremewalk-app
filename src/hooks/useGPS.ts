@@ -22,6 +22,10 @@ export interface GPSState {
 
 const MOCK_KM_PARAM = 'mock_km';
 
+// Movement faster than this is a vehicle (train/car), not walking — its GPS
+// segments are excluded from walkedKm. ~10 km/h.
+const MAX_ON_FOOT_SPEED = 2.8; // m/s
+
 function getMockKm(): number | null {
   if (typeof window === 'undefined') return null;
   const params = new URLSearchParams(window.location.search);
@@ -36,6 +40,7 @@ export function useGPS(
   externalMockKm?: number | null,
   isRaceActive = false,
   watchEnabled = false,
+  paused = false,
 ): GPSState {
   // Mock km: prefer external (from debug panel) → URL param → null
   const initialMockKm = externalMockKm ?? getMockKm();
@@ -58,7 +63,12 @@ export function useGPS(
   // GPS is not cold-restarted when the race begins. Synced in the effect below.
   const isRaceActiveRef = useRef(isRaceActive);
 
+  // Latest measurement-paused flag, read inside the GPS callback (ref keeps
+  // handlePosition stable). Synced in the effect below.
+  const measurementPausedRef = useRef(paused);
+
   const prevPositionRef = useRef<LatLng | null>(null);
+  const prevPosTimeRef = useRef<number>(0);
   const prevKmIndexRef = useRef<number | null>(null);
   const prevKmRef = useRef<number>(0);
   const lastStateUpdateRef = useRef<number>(0);
@@ -95,6 +105,11 @@ export function useGPS(
       walkedMetersRef.current = 0;
     }
   }, [isRaceActive]);
+
+  // Keep the paused flag current for the GPS callback.
+  useEffect(() => {
+    measurementPausedRef.current = paused;
+  }, [paused]);
 
   const handlePosition = useCallback(
     (fix: LocationFix) => {
@@ -133,7 +148,11 @@ export function useGPS(
       // The first fix only needs good accuracy (movement not required) so the
       // start position is adopted immediately.
       let smoothedKm = prevKmRef.current;
-      if (isRaceActiveRef.current && (kmTrackable || (!hasInitialFixRef.current && accuracyOk))) {
+      if (
+        isRaceActiveRef.current &&
+        !measurementPausedRef.current &&
+        (kmTrackable || (!hasInitialFixRef.current && accuracyOk))
+      ) {
         const nearest = findNearestKm(currentPos, kmPoints, prevKmIndexRef.current);
         const nowMs = Date.now();
 
@@ -182,16 +201,23 @@ export function useGPS(
         }
       }
 
-      // Cumulative distance actually walked — sums GPS segments so it advances
-      // anywhere, even off the course. Uses the same trust gate as km tracking.
-      if (prevPositionRef.current && kmTrackable) {
+      // Cumulative distance actually walked — sums GPS segments. Movement faster
+      // than on-foot speed (trains, cars), and paused periods, are excluded so
+      // they don't inflate the distance.
+      if (prevPositionRef.current && kmTrackable && !measurementPausedRef.current) {
         const segMeters = haversineDistance(prevPositionRef.current, currentPos);
-        if (segMeters >= 2 && segMeters <= 250) {
+        const segSeconds = Math.max((fix.timestamp - prevPosTimeRef.current) / 1000, 0.001);
+        const speed =
+          nativeSpeed !== null && Number.isFinite(nativeSpeed) && nativeSpeed >= 0
+            ? nativeSpeed
+            : segMeters / segSeconds;
+        if (segMeters >= 2 && segMeters <= 250 && speed <= MAX_ON_FOOT_SPEED) {
           walkedMetersRef.current += segMeters;
         }
       }
 
       prevPositionRef.current = currentPos;
+      prevPosTimeRef.current = fix.timestamp;
 
       // Track km-5min-ago
       const now = Date.now();

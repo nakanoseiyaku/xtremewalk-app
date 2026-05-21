@@ -142,6 +142,20 @@ export default function App() {
       return next;
     });
   };
+  // Manual measurement pause (e.g. when riding a train). Persisted so it
+  // survives an app restart while still paused.
+  const [measurementPaused, setMeasurementPaused] = useState<boolean>(
+    () => localStorage.getItem('xwalk_measurement_paused') === '1',
+  );
+  const setMeasurementPausedPersisted = (next: boolean) => {
+    setMeasurementPaused(next);
+    try {
+      localStorage.setItem('xwalk_measurement_paused', next ? '1' : '0');
+    } catch {
+      // ignore storage failure
+    }
+  };
+  const toggleMeasurementPaused = () => setMeasurementPausedPersisted(!measurementPaused);
   const [mockKm, setMockKm] = useState<number | null>(getMockKm);
   // Debug-only: simulate being near a checkpoint without real GPS.
   const [mockNearCpKm, setMockNearCpKm] = useState<number | null>(null);
@@ -177,6 +191,7 @@ export default function App() {
     mockKm,
     appState === 'active',
     appState === 'pre_start' || appState === 'active',
+    measurementPaused,
   );
   useGPSKeepalive(appState === 'active');
   const wakeLock = useWakeLock();
@@ -340,6 +355,7 @@ const screenSleep = useScreenSleep(battery.charging);
       setCpVisits([]);
       saveRaceStartedAt(Date.now());
       void resetStepBaseline();
+      setMeasurementPausedPersisted(false);
     }
     if (state === 'setup') {
       savePaceHistory([]);
@@ -429,6 +445,8 @@ const screenSleep = useScreenSleep(battery.charging);
       musicMode={musicMode}
       onMusicModeToggle={toggleMusicMode}
       lastAlert={lastAlert}
+      measurementPaused={measurementPaused}
+      onToggleMeasurementPaused={toggleMeasurementPaused}
     />
     </>
   );

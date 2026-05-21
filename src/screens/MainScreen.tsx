@@ -70,6 +70,8 @@ interface MainScreenProps {
   musicMode?: boolean;
   onMusicModeToggle?: () => void;
   lastAlert?: import('../hooks/useAlerts').AlertBadge | null;
+  measurementPaused?: boolean;
+  onToggleMeasurementPaused?: () => void;
 }
 
 type SubScreen = 'main' | 'ai_chat' | 'cp_arrival';
@@ -102,6 +104,8 @@ export function MainScreen({
   musicMode = false,
   onMusicModeToggle,
   lastAlert = null,
+  measurementPaused = false,
+  onToggleMeasurementPaused,
 }: MainScreenProps) {
   const [subScreen, setSubScreen] = useState<SubScreen>('main');
   const [showSOS, setShowSOS] = useState(false);
@@ -332,6 +336,13 @@ export function MainScreen({
           paddingBottom: 'calc(1rem + var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)))',
         }}
       >
+
+        {/* Measurement paused banner */}
+        {measurementPaused && (
+          <div className="bg-amber-600 text-black text-sm font-bold px-3 py-2 rounded-xl text-center">
+            ⏸ 計測一時停止中 — 歩行距離・距離は加算されません
+          </div>
+        )}
 
         {/* Nutrition reminder badge — shows for 5 min after TTS fires */}
         {nutritionDue && (
@@ -702,6 +713,20 @@ export function MainScreen({
               className="w-full min-h-[56px] bg-gray-900 text-gray-400 text-base font-bold rounded-2xl border border-gray-700 active:scale-95 transition-transform"
             >
               🌑 画面を暗くする（バッテリー節約・GPS継続）
+            </button>
+          )}
+
+          {/* Measurement pause: stop distance tracking while on a train etc. */}
+          {onToggleMeasurementPaused && (
+            <button
+              onClick={onToggleMeasurementPaused}
+              className={`w-full min-h-[56px] text-base font-bold rounded-2xl border active:scale-95 transition-transform ${
+                measurementPaused
+                  ? 'bg-amber-500 text-black border-amber-400'
+                  : 'bg-gray-900 text-gray-400 border-gray-700'
+              }`}
+            >
+              {measurementPaused ? '▶ 計測を再開' : '⏸ 計測を一時停止（電車・移動中）'}
             </button>
           )}
 
