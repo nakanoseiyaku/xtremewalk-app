@@ -298,89 +298,57 @@ function allocateRest(projections: CPProjection[], budgetMin: number): void {
   }
 }
 
+export interface CheckInAnchor {
+  km: number;
+  departedAtMs: number;
+}
+
 /**
- * Simulate arrival at all remaining CPs using leg-by-leg fatigue.
- * Un-fatigues the current pace to get base pace, then re-applies fatigue
- * at the midpoint of each leg. Also allocates recommended rest and computes
- * the scheduled (with-rest) arrival for each CP.
+ * Simulate arrival at the remaining CPs from a known anchor point using
+ * leg-by-leg fatigue, then allocate recommended rest and compute the
+ * scheduled (with-rest) arrival for each CP.
  */
-export function calcFullProjection(
-  currentKm: number,
-  currentPaceKmH: number,
-  checkpoints: Checkpoint[],
+function simulateFromAnchor(
+  anchorKm: number,
+  anchorTimeMs: number,
+  basePaceKmH: number,
+  remainingCps: Checkpoint[],
   startDate: Date,
-  targetHours: number,
-  departedCpKms: number[] = [],
-  now: Date = new Date()
+  targetHours: number
 ): CPProjection[] {
-  const remainingCps = checkpoints.filter(
-    (cp) => cp.km > currentKm && !departedCpKms.includes(cp.km)
-  );
-  if (remainingCps.length === 0) return [];
-
-  // Provisional forecast: no measured pace yet — show the 26h target plan so
-  // the list is visible from the start of the walk. Switches to the live
-  // pace-based forecast as soon as a real pace is measured.
-  if (currentPaceKmH <= 0) {
-    const planned: CPProjection[] = remainingCps.map((cp) => {
-      const targetArrival = new Date(
-        startDate.getTime() + (cp.km / 100) * targetHours * 3600 * 1000
-      );
-      const vsCutoffMin =
-        (cp.cutoff.getTime() - targetArrival.getTime()) / 60000;
-      return {
-        cp,
-        targetArrival,
-        predictedArrival: targetArrival,
-        scheduledArrival: targetArrival,
-        restMinutes: 0,
-        vsTargetMin: 0,
-        vsCutoffMin,
-        willMissTarget: false,
-        willMissCutoff: vsCutoffMin < 0,
-      };
-    });
-    allocateRest(planned, PROVISIONAL_REST_BUDGET_MIN);
-    return planned;
-  }
-
-  // Un-fatigue: recover the "fresh" base pace
-  const basePaceKmH = currentPaceKmH * fatigueFactor(currentKm);
-
-  let simKm = currentKm;
-  let simTimeMs = now.getTime();
+  let simKm = anchorKm;
+  let simTimeMs = anchorTimeMs;
 
   const projections: CPProjection[] = remainingCps.map((cp) => {
-      const midKm = (simKm + cp.km) / 2;
-      const legPaceKmH = basePaceKmH / fatigueFactor(midKm);
-      const legHours = (cp.km - simKm) / legPaceKmH;
-      simTimeMs += legHours * 3600 * 1000;
-      simKm = cp.km;
+    const midKm = (simKm + cp.km) / 2;
+    const legPaceKmH = basePaceKmH / fatigueFactor(midKm);
+    const legHours = (cp.km - simKm) / legPaceKmH;
+    simTimeMs += legHours * 3600 * 1000;
+    simKm = cp.km;
 
-      const predictedArrival = new Date(simTimeMs);
-      const targetArrival = new Date(
-        startDate.getTime() + (cp.km / 100) * targetHours * 3600 * 1000
-      );
-      const vsTargetMin =
-        (targetArrival.getTime() - predictedArrival.getTime()) / 60000;
-      const vsCutoffMin =
-        (cp.cutoff.getTime() - predictedArrival.getTime()) / 60000;
+    const predictedArrival = new Date(simTimeMs);
+    const targetArrival = new Date(
+      startDate.getTime() + (cp.km / 100) * targetHours * 3600 * 1000
+    );
+    const vsTargetMin =
+      (targetArrival.getTime() - predictedArrival.getTime()) / 60000;
+    const vsCutoffMin =
+      (cp.cutoff.getTime() - predictedArrival.getTime()) / 60000;
 
-      return {
-        cp,
-        targetArrival,
-        predictedArrival,
-        scheduledArrival: predictedArrival, // provisional; set below
-        restMinutes: 0, // filled in by allocateRest below
-        vsTargetMin,
-        vsCutoffMin,
-        willMissTarget: vsTargetMin < 0,
-        willMissCutoff: vsCutoffMin < 0,
-      };
-    });
+    return {
+      cp,
+      targetArrival,
+      predictedArrival,
+      scheduledArrival: predictedArrival, // provisional; set below
+      restMinutes: 0, // filled in by allocateRest below
+      vsTargetMin,
+      vsCutoffMin,
+      willMissTarget: vsTargetMin < 0,
+      willMissCutoff: vsCutoffMin < 0,
+    };
+  });
 
-  // Sports-medicine rest allocation across the remaining CPs, budgeted by the
-  // goal's slack vs the 26h target.
+  // Sports-medicine rest allocation, budgeted by the goal's slack vs the target.
   const goal = projections.find((p) => p.cp.km === 100);
   allocateRest(projections, goal ? Math.max(0, goal.vsTargetMin) : 0);
 
@@ -392,4 +360,78 @@ export function calcFullProjection(
   }
 
   return projections;
+}
+
+/**
+ * Full CP arrival projection. Three tiers, in priority order:
+ *  1. GPS / mock pace (currentPaceKmH > 0) — simulate from (currentKm, now).
+ *  2. Check-in pace — average pace from the last departed CP; simulate from there.
+ *  3. Provisional — the fixed 26h target plan (before any progress data).
+ */
+export function calcFullProjection(
+  currentKm: number,
+  currentPaceKmH: number,
+  checkpoints: Checkpoint[],
+  startDate: Date,
+  targetHours: number,
+  departedCpKms: number[] = [],
+  now: Date = new Date(),
+  checkInAnchor: CheckInAnchor | null = null
+): CPProjection[] {
+  const remainingCps = checkpoints.filter(
+    (cp) => cp.km > currentKm && !departedCpKms.includes(cp.km)
+  );
+  if (remainingCps.length === 0) return [];
+
+  // Tier 1: measured GPS pace (or debug mock pace).
+  if (currentPaceKmH > 0) {
+    const basePaceKmH = currentPaceKmH * fatigueFactor(currentKm);
+    return simulateFromAnchor(
+      currentKm,
+      now.getTime(),
+      basePaceKmH,
+      remainingCps,
+      startDate,
+      targetHours
+    );
+  }
+
+  // Tier 2: pace derived from actual check-in progress.
+  if (checkInAnchor) {
+    const elapsedH =
+      (checkInAnchor.departedAtMs - startDate.getTime()) / 3_600_000;
+    const observedPace = checkInAnchor.km / elapsedH;
+    if (elapsedH > 0 && Number.isFinite(observedPace) && observedPace > 0) {
+      const basePaceKmH = observedPace * fatigueFactor(checkInAnchor.km);
+      return simulateFromAnchor(
+        checkInAnchor.km,
+        checkInAnchor.departedAtMs,
+        basePaceKmH,
+        remainingCps,
+        startDate,
+        targetHours
+      );
+    }
+  }
+
+  // Tier 3: provisional 26h target plan — visible from the start of the walk.
+  const planned: CPProjection[] = remainingCps.map((cp) => {
+    const targetArrival = new Date(
+      startDate.getTime() + (cp.km / 100) * targetHours * 3600 * 1000
+    );
+    const vsCutoffMin = (cp.cutoff.getTime() - targetArrival.getTime()) / 60000;
+    return {
+      cp,
+      targetArrival,
+      predictedArrival: targetArrival,
+      scheduledArrival: targetArrival,
+      restMinutes: 0,
+      vsTargetMin: 0,
+      vsCutoffMin,
+      willMissTarget: false,
+      willMissCutoff: vsCutoffMin < 0,
+    };
+  });
+  allocateRest(planned, PROVISIONAL_REST_BUDGET_MIN);
+  return planned;
 }

@@ -5,6 +5,8 @@ interface MockPanelProps {
   onMockKmChange: (km: number) => void;
   mockNearCpKm: number | null;
   onMockNearCpChange: (km: number | null) => void;
+  mockPaceKmH: number | null;
+  onMockPaceChange: (p: number | null) => void;
 }
 
 // PC debug panel — shown when ?debug=1 is in URL
@@ -13,6 +15,8 @@ export function MockPanel({
   onMockKmChange,
   mockNearCpKm,
   onMockNearCpChange,
+  mockPaceKmH,
+  onMockPaceChange,
 }: MockPanelProps) {
   const [km, setKm] = useState(currentKm);
   const [open, setOpen] = useState(true);
@@ -130,6 +134,39 @@ export function MockPanel({
         </div>
         <p className="text-purple-400 mt-1 text-[10px]">
           選択中は「CP到着」ボタンがそのCPを対象にします（自宅でも到着フロー検証可）。
+        </p>
+      </div>
+
+      {/* Simulated pace — verify the pace-driven forecast without real GPS */}
+      <div className="mt-3 border-t border-purple-700 pt-3">
+        <p className="text-purple-300 font-medium mb-1">擬似ペース（GPS無し検証）</p>
+        <div className="grid grid-cols-3 gap-1">
+          <button
+            onClick={() => onMockPaceChange(null)}
+            className={`rounded-lg py-1 transition-colors ${
+              mockPaceKmH == null
+                ? 'bg-amber-500 text-black font-bold'
+                : 'bg-purple-800 hover:bg-purple-700'
+            }`}
+          >
+            なし
+          </button>
+          {[3, 4, 5, 6].map((p) => (
+            <button
+              key={p}
+              onClick={() => onMockPaceChange(p)}
+              className={`rounded-lg py-1 transition-colors ${
+                mockPaceKmH === p
+                  ? 'bg-amber-500 text-black font-bold'
+                  : 'bg-purple-800 hover:bg-purple-700'
+              }`}
+            >
+              {p} km/h
+            </button>
+          ))}
+        </div>
+        <p className="text-purple-400 mt-1 text-[10px]">
+          選択中は到着予測がこのペースで再計算されます。
         </p>
       </div>
 

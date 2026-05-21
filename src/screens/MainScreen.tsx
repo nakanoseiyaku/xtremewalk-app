@@ -47,6 +47,7 @@ interface MainScreenProps {
   mockNearCpKm?: number | null;
   cpVisits: CPVisit[];
   setCpVisits: (updater: (prev: CPVisit[]) => CPVisit[]) => void;
+  forecastProvisional: boolean;
 }
 
 type SubScreen = 'main' | 'ai_chat' | 'cp_arrival';
@@ -75,6 +76,7 @@ export function MainScreen({
   mockNearCpKm = null,
   cpVisits,
   setCpVisits,
+  forecastProvisional,
 }: MainScreenProps) {
   const [subScreen, setSubScreen] = useState<SubScreen>('main');
   const [showSOS, setShowSOS] = useState(false);
@@ -88,8 +90,8 @@ export function MainScreen({
   const card = nightMode ? 'bg-gray-900 border-gray-800' : 'bg-gray-800 border-gray-700';
   const accent = nightMode ? 'text-amber-400' : 'text-amber-400';
 
-  // Before a real pace is measured, the projection list shows the 26h target plan.
-  const isProvisionalForecast = paceInfo.currentPaceKmH <= 0;
+  // True when the forecast is the fixed 26h plan (no GPS/mock pace, no check-ins).
+  const isProvisionalForecast = forecastProvisional;
 
   // Find next CP (first CP with km > currentKm)
   const nextCp = checkpoints.find((cp) => cp.km > gps.currentKm) ?? null;
