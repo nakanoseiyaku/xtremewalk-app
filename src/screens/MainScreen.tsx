@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { TopBar } from '../components/TopBar';
 import { WeatherBar } from '../components/WeatherBar';
 import { MapView } from '../components/MapView';
@@ -16,7 +16,7 @@ import { getNextToilets } from '../utils/toilet';
 import type { ToiletEntry } from '../utils/toilet';
 import { formatTime, formatDayTime, formatMargin, formatPace, formatMinutes } from '../utils/pace';
 import type { PaceInfo, CPProjection } from '../utils/pace';
-import { getSettings, loadCpVisits, saveCpVisits } from '../utils/storage';
+import { getSettings } from '../utils/storage';
 import type { CPVisit } from '../utils/storage';
 import { getActionAdvice } from '../utils/actionAdvice';
 import { PaceGraph } from '../components/PaceGraph';
@@ -45,6 +45,8 @@ interface MainScreenProps {
   stepCount?: number;
   cadence?: number | null;
   mockNearCpKm?: number | null;
+  cpVisits: CPVisit[];
+  setCpVisits: (updater: (prev: CPVisit[]) => CPVisit[]) => void;
 }
 
 type SubScreen = 'main' | 'ai_chat' | 'cp_arrival';
@@ -71,9 +73,10 @@ export function MainScreen({
   stepCount = 0,
   cadence = null,
   mockNearCpKm = null,
+  cpVisits,
+  setCpVisits,
 }: MainScreenProps) {
   const [subScreen, setSubScreen] = useState<SubScreen>('main');
-  const [cpVisits, setCpVisits] = useState<CPVisit[]>(() => loadCpVisits());
   const [showSOS, setShowSOS] = useState(false);
   const [aiInitialMessage, setAiInitialMessage] = useState<string | undefined>();
   const [showMap, setShowMap] = useState(false);
@@ -105,8 +108,15 @@ export function MainScreen({
           return distM <= 100;
         });
 
-  // Near CP sub-screen
-  const effectiveCp = nearCp ?? nextCp;
+  // CP the manual 到着 button targets: nearest CP (mock/GPS), else the first
+  // checkpoint not yet departed, else the next km-ahead CP.
+  const firstUndepartedCp =
+    checkpoints.find(
+      (cp) =>
+        cp.km > 0 &&
+        !cpVisits.some((v) => v.km === cp.km && v.departedAt !== null)
+    ) ?? null;
+  const effectiveCp = nearCp ?? firstUndepartedCp ?? nextCp;
 
   // Visit record for the CP currently shown on the arrival screen
   const effectiveCpVisit = effectiveCp
@@ -194,11 +204,6 @@ export function MainScreen({
     );
     setSubScreen('cp_arrival');
   };
-
-  // Persist visit records
-  useEffect(() => {
-    saveCpVisits(cpVisits);
-  }, [cpVisits]);
 
   if (showSOS) {
     return (

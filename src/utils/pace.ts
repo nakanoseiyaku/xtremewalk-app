@@ -310,9 +310,12 @@ export function calcFullProjection(
   checkpoints: Checkpoint[],
   startDate: Date,
   targetHours: number,
+  departedCpKms: number[] = [],
   now: Date = new Date()
 ): CPProjection[] {
-  const remainingCps = checkpoints.filter((cp) => cp.km > currentKm);
+  const remainingCps = checkpoints.filter(
+    (cp) => cp.km > currentKm && !departedCpKms.includes(cp.km)
+  );
   if (remainingCps.length === 0) return [];
 
   // Provisional forecast: no measured pace yet — show the 26h target plan so

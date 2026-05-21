@@ -7,7 +7,8 @@ import { useBattery } from './hooks/useBattery';
 import { useAlerts } from './hooks/useAlerts';
 import { buildCheckpoints } from './constants/checkpoints';
 import { isNightMode } from './constants/colors';
-import { getAppState, saveAppState, getSettings, savePaceHistory, loadPaceHistory, saveCpVisits, loadRaceStartedAt, saveRaceStartedAt } from './utils/storage';
+import { getAppState, saveAppState, getSettings, savePaceHistory, loadPaceHistory, saveCpVisits, loadCpVisits, loadRaceStartedAt, saveRaceStartedAt } from './utils/storage';
+import type { CPVisit } from './utils/storage';
 import { useTTS } from './hooks/useTTS';
 import { MockPanel, isDebugMode, getMockKm } from './components/MockPanel';
 import { useScreenSleep } from './hooks/useScreenSleep';
@@ -127,6 +128,8 @@ export default function App() {
   const [mockKm, setMockKm] = useState<number | null>(getMockKm);
   // Debug-only: simulate being near a checkpoint without real GPS.
   const [mockNearCpKm, setMockNearCpKm] = useState<number | null>(null);
+  // Checkpoint arrival/departure records (drives 通過記録 + projection progress).
+  const [cpVisits, setCpVisits] = useState<CPVisit[]>(() => loadCpVisits());
   const [paceInfo, setPaceInfo] = useState<PaceInfo>({
     currentPaceKmH: 0,
     predictedPaceKmH: 0,
@@ -230,19 +233,28 @@ const screenSleep = useScreenSleep(battery.charging);
     }
   }, [gps.currentKm, appState, effectiveCheckpoints, effectiveStartDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Compute full CP projections when pace/km changes
+  // Persist checkpoint visit records
+  useEffect(() => {
+    saveCpVisits(cpVisits);
+  }, [cpVisits]);
+
+  // Compute full CP projections when pace/km/check-ins change
   useEffect(() => {
     if (appState !== 'active') return;
     const s = getSettings();
+    const departedCpKms = cpVisits
+      .filter((v) => v.departedAt !== null)
+      .map((v) => v.km);
     const p = calcFullProjection(
       gps.currentKm,
       paceInfo.currentPaceKmH,
       effectiveCheckpoints,
       effectiveStartDate,
       s.targetHours,
+      departedCpKms,
     );
     setProjections(p);
-  }, [gps.currentKm, paceInfo.currentPaceKmH, appState, effectiveCheckpoints, effectiveStartDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gps.currentKm, paceInfo.currentPaceKmH, appState, effectiveCheckpoints, effectiveStartDate, cpVisits]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Track GPS lost
   useEffect(() => {
@@ -280,12 +292,12 @@ const screenSleep = useScreenSleep(battery.charging);
       paceHistoryRef.current = [];
       kmSnapshotsRef.current = [];
       savePaceHistory([]);
-      saveCpVisits([]);
+      setCpVisits([]);
       saveRaceStartedAt(Date.now());
     }
     if (state === 'setup') {
       savePaceHistory([]);
-      saveCpVisits([]);
+      setCpVisits([]);
       saveRaceStartedAt(null);
     }
     setAppState(state);
@@ -347,6 +359,8 @@ const screenSleep = useScreenSleep(battery.charging);
       checkpoints={effectiveCheckpoints}
       raceStartedAt={raceStartedAt}
       mockNearCpKm={mockNearCpKm}
+      cpVisits={cpVisits}
+      setCpVisits={setCpVisits}
       stores={storesData as import('./utils/convenience').ConvenienceStore[]}
       toilets={enrichedToilets}
       nightMode={nightMode}
