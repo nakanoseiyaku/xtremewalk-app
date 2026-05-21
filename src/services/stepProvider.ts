@@ -2,6 +2,7 @@ import { Capacitor, registerPlugin } from '@capacitor/core';
 import type { PluginListenerHandle } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import type { MotionState } from '../hooks/useMotionSensor';
+import { loadStepCount, saveStepCount } from '../utils/storage';
 
 interface StepData {
   steps: number;
@@ -32,6 +33,7 @@ export async function resetStepBaseline(): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
   try {
     await XwalkPedometer.resetBaseline();
+    saveStepCount(0);
   } catch {
     // plugin unavailable — ignore
   }
@@ -47,6 +49,10 @@ export function subscribeNativeSteps(
 ): () => void {
   const history: { steps: number; ts: number }[] = [];
   let currentSteps = 0;
+  // Offset added to the raw plugin count when a sensor reset is detected
+  // (e.g. after a battery-death reboot). Allows the displayed total to
+  // continue from where it left off rather than restarting from 0.
+  let stepOffset = 0;
   let lastIncreaseTs = 0;
   let ready = false;
   let cleanedUp = false;
@@ -72,18 +78,21 @@ export function subscribeNativeSteps(
     });
   };
 
-  const applySteps = (steps: number) => {
+  const applySteps = (rawSteps: number) => {
+    const steps = stepOffset + rawSteps;
     if (steps > currentSteps) lastIncreaseTs = Date.now();
     currentSteps = steps;
     emit();
   };
 
-  // Snapshot the cumulative count every 5s — gives cadence its rolling window
-  // and lets `isWalking` drop back to false when the user stops.
+  // Snapshot the cumulative count every 5s — gives cadence its rolling window,
+  // lets `isWalking` drop back to false when the user stops, and persists the
+  // count so it survives battery-death reboots.
   const sample = setInterval(() => {
     const now = Date.now();
     history.push({ steps: currentSteps, ts: now });
     while (history.length > 2 && now - history[0].ts > 75_000) history.shift();
+    saveStepCount(currentSteps);
     emit();
   }, 5_000);
 
@@ -106,7 +115,15 @@ export function subscribeNativeSteps(
       return;
     }
     ready = true;
-    applySteps(initial.steps ?? 0);
+    const rawInitial = initial.steps ?? 0;
+    const saved = loadStepCount();
+    // If the plugin reports fewer steps than we last saved, the hardware
+    // sensor was reset (battery died → phone rebooted). Use the saved total
+    // as an offset so the count continues from where it left off.
+    if (rawInitial < saved) {
+      stepOffset = saved;
+    }
+    applySteps(rawInitial);
     stepsHandle = await XwalkPedometer.addListener('steps', (d) => applySteps(d.steps));
     // The hardware counter keeps running while the app is frozen — re-read it on
     // resume so any steps taken in the background are recovered immediately.

@@ -93,6 +93,7 @@ export function clearAll(): void {
   safeRemove('xtremewalk_pace_history');
   safeRemove('xtremewalk_cp_visits');
   safeRemove('xtremewalk_race_started_at');
+  safeRemove('xtremewalk_step_count');
 }
 
 export function savePaceHistory(history: { km: number; paceKmH: number }[]): void {
@@ -168,4 +169,15 @@ export function getMusicMode(): boolean {
 
 export function saveMusicMode(v: boolean): void {
   safeSet('xtremewalk_music_mode', v ? 'true' : 'false');
+}
+
+export function saveStepCount(n: number): void {
+  safeSet('xtremewalk_step_count', String(Math.floor(n)));
+}
+
+export function loadStepCount(): number {
+  const raw = safeGet('xtremewalk_step_count');
+  if (raw === null) return 0;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
 }
