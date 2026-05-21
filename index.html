@@ -29,14 +29,17 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      // Register Service Worker
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function () {
+      // Register Service Worker — web/PWA only. On the Capacitor native build the
+      // WebView must always load the bundled assets, so the SW is skipped.
+      window.addEventListener('load', function () {
+        var cap = window.Capacitor;
+        if (cap && cap.isNativePlatform && cap.isNativePlatform()) return;
+        if ('serviceWorker' in navigator) {
           navigator.serviceWorker.register('./sw.js').catch(function () {
             // SW registration failed silently
           });
-        });
-      }
+        }
+      });
     </script>
   </body>
 </html>
