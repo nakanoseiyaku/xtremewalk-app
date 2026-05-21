@@ -5,6 +5,14 @@ import type { WeatherCondition } from '../utils/weather';
 import type { ConvenienceStore } from '../utils/convenience';
 import { getNextStores } from '../utils/convenience';
 
+export type AlertPriority = 'critical' | 'high' | 'medium' | 'low';
+
+export interface AlertBadge {
+  text: string;
+  priority: AlertPriority;
+  ts: number;
+}
+
 export interface AlertInput {
   currentKm: number;
   marginMinutes: number | null;
@@ -19,6 +27,7 @@ export interface AlertInput {
   wakeScreen?: (ms?: number) => void;
   isWalking: boolean | null;
   cadence: number | null;
+  musicMode: boolean;
 }
 
 const CADENCE_WARN = 85; // steps/min below this triggers alert
@@ -270,6 +279,11 @@ export function useAlerts(input: AlertInput) {
   const setNutritionDueRef = useRef(setNutritionDue);
   setNutritionDueRef.current = setNutritionDue;
 
+  const [lastAlert, setLastAlert] = useState<AlertBadge | null>(null);
+  const setLastAlertRef = useRef(setLastAlert);
+  setLastAlertRef.current = setLastAlert;
+  const lastAlertTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleAlerts = useCallback(() => {
     const input = inputRef.current;
     if (!input.active) return;
@@ -281,8 +295,18 @@ export function useAlerts(input: AlertInput) {
     const km = input.currentKm;
 
     // Wrapper: wake screen 30s before speaking so user can read the UI after the alert
-    const speakAndWake = (text: string) => {
+    // priority: 'critical' always speaks; 'high'/'medium'/'low' are suppressed in music mode
+    const speakAndWake = (text: string, priority: AlertPriority = 'medium') => {
       input.wakeScreen?.(30_000);
+      // Record for badge display (always, regardless of music mode)
+      if (lastAlertTimeoutRef.current) clearTimeout(lastAlertTimeoutRef.current);
+      setLastAlertRef.current({ text, priority, ts: Date.now() });
+      lastAlertTimeoutRef.current = setTimeout(() => {
+        setLastAlertRef.current(null);
+        lastAlertTimeoutRef.current = null;
+      }, 60_000);
+      // In music mode, only CRITICAL interrupts other audio
+      if (input.musicMode && priority !== 'critical') return;
       speak?.(text);
     };
 
@@ -299,7 +323,8 @@ export function useAlerts(input: AlertInput) {
       flashScreen('#FF0000');
       vibrate([500, 200, 500, 200, 500]);
       speakAndWake(
-        `警告！チェックポイントの制限時間まで${Math.round(input.marginMinutes)}分です。ペースを上げてください。`
+        `警告！チェックポイントの制限時間まで${Math.round(input.marginMinutes)}分です。ペースを上げてください。`,
+        'critical'
       );
     }
 
@@ -316,7 +341,8 @@ export function useAlerts(input: AlertInput) {
       flashScreen('#FF0000');
       vibrate([1000, 500, 1000]);
       speakAndWake(
-        `緊急警告！バッテリーが${input.batteryLevel}%です。今すぐモバイルバッテリーで充電してください。`
+        `緊急！バッテリーが${input.batteryLevel}%です。今すぐ充電を！`,
+        'critical'
       );
     }
 
@@ -330,7 +356,8 @@ export function useAlerts(input: AlertInput) {
       flashScreen('#FF8800');
       vibrate([300, 100, 300]);
       speakAndWake(
-        'GPSを10分以上ロストしています。スマートフォンを空に向けて、GPS信号を確認してください。'
+        'GPS喪失10分。空をかざして確認を。',
+        'critical'
       );
     } else if (input.gpsStatus !== 'lost') {
       flags.gpsLostAlerted = false;
@@ -344,7 +371,8 @@ export function useAlerts(input: AlertInput) {
       if (now - flags.etaNegativeLast > 10 * 60 * 1000) {
         flags.etaNegativeLast = now;
         speakAndWake(
-          '警告！このペースでは次のチェックポイントの制限時間に間に合いません。ペースを上げてください。'
+          '警告！このペースでは次のチェックポイントの制限時間に間に合いません。ペースを上げてください。',
+          'high'
         );
       }
     }
@@ -355,7 +383,8 @@ export function useAlerts(input: AlertInput) {
       flags.heatAlerted = true;
       vibrate([200, 100, 200]);
       speakAndWake(
-        '熱中症注意！気温が高く湿度も高い状態です。こまめな水分補給と休憩を心がけてください。'
+        '熱中症注意！気温が高く湿度も高い状態です。こまめな水分補給と休憩を心がけてください。',
+        'high'
       );
     }
 
@@ -364,7 +393,7 @@ export function useAlerts(input: AlertInput) {
     if (input.weatherCondition?.isRain && !flags.rainAlerted) {
       flags.rainAlerted = true;
       vibrate([200, 100, 200]);
-      speakAndWake('雨の予報があります。今すぐレインウェアを手元に出してください。');
+      speakAndWake('雨の予報があります。今すぐレインウェアを手元に出してください。', 'high');
     }
 
     // ---- LEVEL 3: INFO / ACTION (TTS only) ----
@@ -376,7 +405,7 @@ export function useAlerts(input: AlertInput) {
       const storeDist =
         nextStores[0] ? (nextStores[0].km_pos - km).toFixed(1) : null;
       const storeMsg = storeDist ? `次のコンビニまで${storeDist}キロです。` : '';
-      speakAndWake(`水分補給の時間です。コップ一杯の水を飲みましょう。${storeMsg}`);
+      speakAndWake(`水分補給の時間です。コップ一杯の水を飲みましょう。${storeMsg}`, 'medium');
     }
 
     // 45-min nutrition reminder — bonking prevention (solid food takes 30 min to absorb)
@@ -390,7 +419,8 @@ export function useAlerts(input: AlertInput) {
       speakAndWake(
         `エネルギー補給のタイミングです。おにぎりやパン、羊羹など炭水化物を今すぐ食べてください。` +
         `固形食は食べてから30分後にエネルギーになるので、空腹を感じる前に食べることが重要です。` +
-        storeText
+        storeText,
+        'medium'
       );
       setNutritionDueRef.current(true);
       if (flags.nutritionDueTimeout) clearTimeout(flags.nutritionDueTimeout);
@@ -411,7 +441,7 @@ export function useAlerts(input: AlertInput) {
       const msg = CADENCE_MESSAGES[flags.cadenceMsgIndex % CADENCE_MESSAGES.length];
       flags.cadenceMsgIndex += 1;
       vibrate([200, 100, 200]);
-      speakAndWake(msg);
+      speakAndWake(msg, 'medium');
     }
 
     // Phase-aware, walking-state-aware stretch reminder (sports medicine panel design)
@@ -423,7 +453,7 @@ export function useAlerts(input: AlertInput) {
       flags.stretchLast = now;
       const msg = selectStretch(km, input.isWalking, flags.stretchIndex);
       flags.stretchIndex += 1;
-      speakAndWake(msg);
+      speakAndWake(msg, 'medium');
     }
 
     // ---- KM-crossing detection ----
@@ -439,7 +469,8 @@ export function useAlerts(input: AlertInput) {
         flags.kmMilestones.add(milestone);
         vibrate([100, 50, 100]);
         speakAndWake(
-          `${milestone}キロ通過！足のケアをしてください。靴下のシワを伸ばし、水ぶくれがないか確認しましょう。`
+          `${milestone}キロ通過！足のケアをしてください。靴下のシワを伸ばし、水ぶくれがないか確認しましょう。`,
+          'low'
         );
       }
     }
@@ -448,7 +479,8 @@ export function useAlerts(input: AlertInput) {
     if (prevKm < 2 && !flags.km0Started) {
       flags.km0Started = true;
       speakAndWake(
-        'スタートおめでとうございます！コンビニで補給を済ませてからスタートしましょう。'
+        'スタートおめでとうございます！コンビニで補給を済ませてからスタートしましょう。',
+        'low'
       );
     }
 
@@ -459,7 +491,8 @@ export function useAlerts(input: AlertInput) {
         'この先11キロ以上コンビニなし区間に入ります。' +
         '今すぐコンビニに立ち寄ってください。' +
         '推奨購入品：おにぎり2個、スポーツドリンク、塩タブレットまたは梅干し。' +
-        '次の補給まで2時間以上かかる可能性があります。'
+        '次の補給まで2時間以上かかる可能性があります。',
+        'medium'
       );
     }
 
@@ -471,7 +504,8 @@ export function useAlerts(input: AlertInput) {
         `30キロ手前です。体内のグリコーゲンが残り少なくなっています。` +
         `今すぐおにぎりか羊羹を食べてください。` +
         `30分後にエネルギーになり、30キロの壁を越える頃に効果が出ます。` +
-        `今食べないとガス欠やシャリバテになります。`
+        `今食べないとガス欠やシャリバテになります。`,
+        'high'
       );
     }
 
@@ -483,7 +517,8 @@ export function useAlerts(input: AlertInput) {
         '重要な警告です。これから30キロから45キロが膝の最大の危機です。' +
         '今すぐ立ち止まって腸脛靭帯をストレッチしてください。' +
         '右足を左足の後ろに交差させて、上体を右にゆっくり倒して10秒。左右3回。' +
-        '膝の外側に少しでも違和感がある場合は今対処しないと残り70キロを歩けなくなります。'
+        '膝の外側に少しでも違和感がある場合は今対処しないと残り70キロを歩けなくなります。',
+        'high'
       );
     }
 
@@ -494,7 +529,8 @@ export function useAlerts(input: AlertInput) {
       speakAndWake(
         'まもなく遊行寺坂です。急な上り坂が始まります。' +
         'ペースを落として体力を温存してください。' +
-        '頂上を越えると下り坂になります。下りでは歩幅を小さくして、膝をかばいながらゆっくり歩いてください。'
+        '頂上を越えると下り坂になります。下りでは歩幅を小さくして、膝をかばいながらゆっくり歩いてください。',
+        'medium'
       );
     }
 
@@ -503,7 +539,8 @@ export function useAlerts(input: AlertInput) {
       flags.wall45Warned = true;
       vibrate([200, 100, 200]);
       speakAndWake(
-        '45キロ手前です。多くの選手がここから急激な疲労を感じます。今すぐペースを5パーセント落として補給してください。焦らず完歩を目指しましょう。'
+        '45キロ手前です。多くの選手がここから急激な疲労を感じます。今すぐペースを5パーセント落として補給してください。焦らず完歩を目指しましょう。',
+        'medium'
       );
     }
 
@@ -512,7 +549,8 @@ export function useAlerts(input: AlertInput) {
       flags.km66ToiletWarned = true;
       vibrate([100, 50, 100]);
       speakAndWake(
-        'ここからトイレが13キロありません。次のトイレはkm79です。今のうちに済ませておいてください。'
+        'ここからトイレが13キロありません。次のトイレはkm79です。今のうちに済ませておいてください。',
+        'medium'
       );
     }
 
@@ -521,21 +559,22 @@ export function useAlerts(input: AlertInput) {
       flags.wall75Warned = true;
       vibrate([200, 100, 200]);
       speakAndWake(
-        '75キロ手前です。残り25キロ。ここから疲労が加速します。ペースを維持するだけで十分です。補給と休憩を忘れずに。'
+        '75キロ手前です。残り25キロ。ここから疲労が加速します。ペースを維持するだけで十分です。補給と休憩を忘れずに。',
+        'medium'
       );
     }
 
     // km 96: final supply chance
     if (prevKm < 96 && km >= 96 && !flags.km96Warned) {
       flags.km96Warned = true;
-      speakAndWake('残り4キロ。最後の補給チャンスです。ゴールまでもう少しです！');
+      speakAndWake('残り4キロ。最後の補給チャンスです。ゴールまでもう少しです！', 'medium');
     }
 
     // Form coaching cues — biomechanics-based, fires once per km milestone
     for (const cue of FORM_COACHING) {
       if (prevKm < cue.km && km >= cue.km && !flags.formCoachingFired.has(cue.km)) {
         flags.formCoachingFired.add(cue.km);
-        speakAndWake(cue.msg);
+        speakAndWake(cue.msg, 'low');
       }
     }
   }, []); // stable — GPS updates do not recreate this callback
@@ -567,5 +606,5 @@ export function useAlerts(input: AlertInput) {
     return () => clearInterval(interval);
   }, [input.active, handleAlerts]);
 
-  return { nutritionDue };
+  return { nutritionDue, lastAlert };
 }

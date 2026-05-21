@@ -8,6 +8,8 @@ interface TopBarProps {
   wakeLockStatus: WakeLockStatus;
   gpsStatus: GPSStatus;
   nightMode: boolean;
+  musicMode?: boolean;
+  onMusicModeToggle?: () => void;
 }
 
 function GPSIndicator({ status }: { status: GPSStatus }) {
@@ -75,7 +77,7 @@ function BatteryIcon({ level, charging }: { level: number | null; charging: bool
   );
 }
 
-export function TopBar({ currentKm, battery, wakeLockStatus, gpsStatus, nightMode }: TopBarProps) {
+export function TopBar({ currentKm, battery, wakeLockStatus, gpsStatus, nightMode, musicMode = false, onMusicModeToggle }: TopBarProps) {
   const bg = nightMode ? 'bg-black border-gray-800' : 'bg-gray-900 border-gray-700';
   const text = nightMode ? 'text-white' : 'text-gray-100';
 
@@ -91,6 +93,19 @@ export function TopBar({ currentKm, battery, wakeLockStatus, gpsStatus, nightMod
 
       {/* Right side indicators */}
       <div className="flex items-center gap-3">
+        {/* Music mode toggle */}
+        {onMusicModeToggle && (
+          <button
+            onClick={onMusicModeToggle}
+            className={`text-lg px-1 rounded transition-colors active:scale-90 ${
+              musicMode ? 'text-amber-400' : 'text-gray-600'
+            }`}
+            aria-label={musicMode ? 'ながら聴きモード ON' : 'ながら聴きモード OFF'}
+            title={musicMode ? '音楽モードON（重要警告のみ音声）' : '音楽モードOFF（全音声）'}
+          >
+            🎵
+          </button>
+        )}
         <BatteryIcon level={battery.level} charging={battery.charging} />
         {battery.estimatedHours !== null && (
           <span className="text-gray-400 text-xs">

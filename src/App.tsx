@@ -7,7 +7,7 @@ import { useBattery } from './hooks/useBattery';
 import { useAlerts } from './hooks/useAlerts';
 import { buildCheckpoints } from './constants/checkpoints';
 import { isNightMode } from './constants/colors';
-import { getAppState, saveAppState, getSettings, savePaceHistory, loadPaceHistory, saveCpVisits, loadCpVisits, loadRaceStartedAt, saveRaceStartedAt } from './utils/storage';
+import { getAppState, saveAppState, getSettings, savePaceHistory, loadPaceHistory, saveCpVisits, loadCpVisits, loadRaceStartedAt, saveRaceStartedAt, getMusicMode, saveMusicMode } from './utils/storage';
 import type { CPVisit } from './utils/storage';
 import { useTTS } from './hooks/useTTS';
 import { MockPanel, isDebugMode, getMockKm } from './components/MockPanel';
@@ -125,6 +125,14 @@ export default function App() {
   const [nightMode, setNightMode] = useState(isNightMode);
   const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
   const [debugMode] = useState(isDebugMode);
+  const [musicMode, setMusicMode] = useState(getMusicMode);
+  const toggleMusicMode = () => {
+    setMusicMode((prev) => {
+      const next = !prev;
+      saveMusicMode(next);
+      return next;
+    });
+  };
   const [mockKm, setMockKm] = useState<number | null>(getMockKm);
   // Debug-only: simulate being near a checkpoint without real GPS.
   const [mockNearCpKm, setMockNearCpKm] = useState<number | null>(null);
@@ -285,7 +293,7 @@ const screenSleep = useScreenSleep(battery.charging);
   const weatherCondition = useMemo(() => getCurrentWeather(weatherData), [weatherData]);
 
   // Alerts
-  const { nutritionDue } = useAlerts({
+  const { nutritionDue, lastAlert } = useAlerts({
     currentKm: gps.currentKm,
     marginMinutes: paceInfo.marginMinutes,
     batteryLevel: battery.level,
@@ -299,6 +307,7 @@ const screenSleep = useScreenSleep(battery.charging);
     wakeScreen: screenSleep.wakeFor,
     isWalking: motion.isWalking,
     cadence: motion.cadence,
+    musicMode,
   });
 
   const transitionTo = (state: AppState) => {
@@ -391,6 +400,9 @@ const screenSleep = useScreenSleep(battery.charging);
       wakeScreen={screenSleep.wakeFor}
       onSleepNow={screenSleep.sleep}
       paceHistory={paceHistoryRef.current}
+      musicMode={musicMode}
+      onMusicModeToggle={toggleMusicMode}
+      lastAlert={lastAlert}
     />
     </>
   );

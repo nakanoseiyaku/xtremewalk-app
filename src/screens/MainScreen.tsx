@@ -22,6 +22,25 @@ import { getActionAdvice } from '../utils/actionAdvice';
 import { PaceGraph } from '../components/PaceGraph';
 import type { PacePoint } from '../components/PaceGraph';
 import { haversineDistance } from '../utils/gps';
+import type { AlertBadge } from '../hooks/useAlerts';
+
+function AlertBadgeBar({ alert, nightMode }: { alert: AlertBadge; nightMode: boolean }) {
+  const priorityColor =
+    alert.priority === 'high' ? 'bg-orange-900 border-orange-600 text-orange-100' :
+    alert.priority === 'medium' ? 'bg-blue-900 border-blue-600 text-blue-100' :
+    'bg-gray-800 border-gray-600 text-gray-300';
+  const icon =
+    alert.priority === 'high' ? '⚠️' :
+    alert.priority === 'medium' ? '💬' :
+    '📋';
+
+  return (
+    <div className={`mx-3 mt-1 px-3 py-2 rounded-xl border text-sm flex items-start gap-2 ${priorityColor} ${nightMode ? 'opacity-90' : ''}`}>
+      <span className="mt-0.5 shrink-0">{icon}</span>
+      <span className="leading-snug line-clamp-2">{alert.text}</span>
+    </div>
+  );
+}
 
 interface MainScreenProps {
   gps: GPSState;
@@ -48,6 +67,9 @@ interface MainScreenProps {
   cpVisits: CPVisit[];
   setCpVisits: (updater: (prev: CPVisit[]) => CPVisit[]) => void;
   forecastProvisional: boolean;
+  musicMode?: boolean;
+  onMusicModeToggle?: () => void;
+  lastAlert?: import('../hooks/useAlerts').AlertBadge | null;
 }
 
 type SubScreen = 'main' | 'ai_chat' | 'cp_arrival';
@@ -77,6 +99,9 @@ export function MainScreen({
   cpVisits,
   setCpVisits,
   forecastProvisional,
+  musicMode = false,
+  onMusicModeToggle,
+  lastAlert = null,
 }: MainScreenProps) {
   const [subScreen, setSubScreen] = useState<SubScreen>('main');
   const [showSOS, setShowSOS] = useState(false);
@@ -258,7 +283,14 @@ export function MainScreen({
         wakeLockStatus={wakeLock.status}
         gpsStatus={gps.status}
         nightMode={nightMode}
+        musicMode={musicMode}
+        onMusicModeToggle={onMusicModeToggle}
       />
+
+      {/* ながら聴きモード アラートバッジ */}
+      {musicMode && lastAlert && (
+        <AlertBadgeBar alert={lastAlert} nightMode={nightMode} />
+      )}
 
       {/* GPS permission denied banner */}
       {gps.status === 'permission_denied' && (

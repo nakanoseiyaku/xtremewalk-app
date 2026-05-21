@@ -161,3 +161,11 @@ export function buildShareUrl(settings: AppSettings): string {
   const base = window.location.origin + window.location.pathname;
   return base + encodeSettingsToHash(settings);
 }
+
+export function getMusicMode(): boolean {
+  return safeGet('xtremewalk_music_mode') === 'true';
+}
+
+export function saveMusicMode(v: boolean): void {
+  safeSet('xtremewalk_music_mode', v ? 'true' : 'false');
+}
