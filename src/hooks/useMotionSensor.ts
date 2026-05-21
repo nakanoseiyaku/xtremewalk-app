@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { subscribeNativeSteps } from '../services/stepProvider';
 
 export interface MotionState {
   isWalking: boolean | null; // null = sensor unavailable or still sampling
@@ -44,6 +46,12 @@ export function useMotionSensor(): MotionState {
   const stepCountRef = useRef<number>(0);
 
   useEffect(() => {
+    // Native: read the hardware step counter, which keeps counting with the
+    // screen off. Web: fall back to the devicemotion accelerometer below.
+    if (Capacitor.isNativePlatform()) {
+      return subscribeNativeSteps(setState);
+    }
+
     if (!('DeviceMotionEvent' in window)) return;
 
     setState((s) => ({ ...s, isAvailable: true }));

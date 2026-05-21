@@ -14,6 +14,7 @@ import { MockPanel, isDebugMode, getMockKm } from './components/MockPanel';
 import { useScreenSleep } from './hooks/useScreenSleep';
 import { useMotionSensor } from './hooks/useMotionSensor';
 import { useGPSKeepalive } from './hooks/useGPSKeepalive';
+import { resetStepBaseline } from './services/stepProvider';
 import { fetchWeather, getCurrentWeather } from './utils/weather';
 import { calcPaceInfo, calcFullProjection } from './utils/pace';
 import type { PaceInfo, CPProjection } from './utils/pace';
@@ -319,6 +320,7 @@ const screenSleep = useScreenSleep(battery.charging);
       savePaceHistory([]);
       setCpVisits([]);
       saveRaceStartedAt(Date.now());
+      void resetStepBaseline();
     }
     if (state === 'setup') {
       savePaceHistory([]);

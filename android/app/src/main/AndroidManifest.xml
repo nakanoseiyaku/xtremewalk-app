@@ -38,4 +38,12 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Hardware step counter (TYPE_STEP_COUNTER) — runtime permission on Android 10+.
+         Background GPS permissions and the foreground service are merged in from
+         the @capgo/background-geolocation plugin manifest. -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-feature
+        android:name="android.hardware.sensor.stepcounter"
+        android:required="false" />
 </manifest>
